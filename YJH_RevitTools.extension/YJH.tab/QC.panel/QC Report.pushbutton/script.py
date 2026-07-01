@@ -30,7 +30,7 @@ from System.Text import UTF8Encoding
 # 버전
 # ============================================================
 
-VERSION = "v1.8 - Sheet + View + Parameter QC"
+VERSION = "v1.9 - Filtered Portfolio Report"
 
 
 # ============================================================
@@ -217,6 +217,217 @@ def add_issue(
             qc_item
         ]
     )
+
+
+# ============================================================
+# Issue 그룹화 및 Portfolio Sample
+# ============================================================
+
+def get_severity_rank(severity):
+    """Severity 정렬 및 그룹 대표값 선정을 위한 우선순위를 반환한다."""
+    severity_ranks = {
+        u"High": 3,
+        u"Medium": 2,
+        u"Low": 1
+    }
+
+    return severity_ranks.get(to_text(severity), 0)
+
+
+def get_issue_group_fields(issue_row):
+    """상세 Issue를 그룹용 QC Item과 Issue Message로 정규화한다."""
+    category = issue_row[0]
+    issue_detail = to_text(issue_row[4])
+    qc_item = issue_detail
+    issue_message = issue_detail
+
+    if category == u"Sheet QC":
+        if issue_detail == u"Sheet Number 누락":
+            qc_item = u"Sheet Number"
+            issue_message = u"누락"
+        elif issue_detail == u"Sheet Name 누락":
+            qc_item = u"Sheet Name"
+            issue_message = u"누락"
+        elif issue_detail == u"배치된 View 없음":
+            qc_item = u"Placed Views"
+
+    elif category == u"View QC":
+        if issue_detail == u"View Name 누락":
+            qc_item = u"View Name"
+            issue_message = u"누락"
+        elif issue_detail.startswith(u"임시 키워드 포함:"):
+            qc_item = u"View Name"
+            issue_message = u"임시 키워드 포함"
+        elif issue_detail.startswith(u"View Scale 비정상:"):
+            qc_item = u"View Scale"
+            issue_message = u"비정상"
+        elif issue_detail.startswith(u"View Scale 확인 불가:"):
+            qc_item = u"View Scale"
+            issue_message = u"확인 불가"
+        elif issue_detail == u"View Template 미적용":
+            qc_item = u"View Template"
+            issue_message = u"미적용"
+        elif issue_detail.startswith(u"View Template 확인 불가:"):
+            qc_item = u"View Template"
+            issue_message = u"확인 불가"
+        elif issue_detail == u"Sheet에 배치되지 않은 도면용 View":
+            qc_item = u"Sheet Placement"
+
+    elif category == u"Parameter QC":
+        missing_prefix = u"Shared Parameter 없음: "
+        empty_marker = u" 값 비어 있음"
+
+        if issue_detail.startswith(missing_prefix):
+            qc_item = issue_detail[len(missing_prefix):]
+            issue_message = u"Shared Parameter 없음"
+        else:
+            marker_index = issue_detail.find(empty_marker)
+
+            if marker_index > 0:
+                qc_item = issue_detail[:marker_index]
+                issue_message = issue_detail[marker_index + 1:]
+
+    return qc_item, issue_message
+
+
+def build_issue_group_rows(issue_rows):
+    """Category, Item Type, QC Item, Issue Message 기준으로 그룹화한다."""
+    grouped_issues = {}
+
+    for row in issue_rows:
+        category = row[0]
+        item_type = row[1]
+        item_name = row[2]
+        severity = row[3]
+        qc_item, issue_message = get_issue_group_fields(row)
+        group_key = (
+            category,
+            item_type,
+            qc_item,
+            issue_message
+        )
+
+        if group_key not in grouped_issues:
+            grouped_issues[group_key] = {
+                "severity": severity,
+                "count": 0,
+                "sample_items": []
+            }
+
+        group_data = grouped_issues[group_key]
+        group_data["count"] += 1
+
+        if (
+            get_severity_rank(severity)
+            > get_severity_rank(group_data["severity"])
+        ):
+            group_data["severity"] = severity
+
+        if (
+            item_name not in group_data["sample_items"]
+            and len(group_data["sample_items"]) < 5
+        ):
+            group_data["sample_items"].append(item_name)
+
+    group_rows = []
+
+    for group_key in grouped_issues:
+        group_data = grouped_issues[group_key]
+        group_rows.append(
+            [
+                group_key[0],
+                group_key[1],
+                group_key[2],
+                group_data["severity"],
+                group_data["count"],
+                u", ".join(group_data["sample_items"])
+            ]
+        )
+
+    return sorted(
+        group_rows,
+        key=lambda row: (
+            -get_severity_rank(row[3]),
+            to_text(row[0]),
+            to_text(row[1]),
+            to_text(row[2]),
+            to_text(row[5])
+        )
+    )
+
+
+def contains_temporary_keyword(value):
+    """View 이름에 Portfolio 우선 표시 키워드가 있는지 확인한다."""
+    lower_value = to_text(value).lower()
+
+    for keyword in TEMPORARY_KEYWORDS:
+        if keyword.lower() in lower_value:
+            return True
+
+    return False
+
+
+def build_key_issue_rows(issue_rows):
+    """Portfolio Output에 표시할 핵심 상세 Issue를 최대 12개 선정한다."""
+    sheet_issue_count = 0
+
+    for row in issue_rows:
+        if row[0] == u"Sheet QC":
+            sheet_issue_count += 1
+
+    candidates = []
+
+    for index, row in enumerate(issue_rows):
+        category = row[0]
+        item_name = row[2]
+        severity = row[3]
+        issue_detail = row[4]
+
+        # 미배치 View는 Issue Group Summary의 Count + Sample Items로만 표시한다.
+        if (
+            category == u"View QC"
+            and issue_detail == u"Sheet에 배치되지 않은 도면용 View"
+        ):
+            continue
+
+        if (
+            category == u"View QC"
+            and contains_temporary_keyword(item_name)
+        ):
+            priority = 0
+        elif category == u"Sheet QC" and sheet_issue_count <= 10:
+            priority = 1
+        elif severity == u"High":
+            priority = 2
+        elif severity == u"Medium":
+            priority = 3
+        else:
+            priority = 4
+
+        candidates.append((priority, index, row))
+
+    candidates = sorted(
+        candidates,
+        key=lambda item: (item[0], item[1])
+    )
+
+    key_issue_rows = []
+
+    for candidate in candidates[:12]:
+        row = candidate[2]
+        qc_item, issue_message = get_issue_group_fields(row)
+        key_issue_rows.append(
+            [
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                qc_item,
+                issue_message
+            ]
+        )
+
+    return key_issue_rows
 
 
 # ============================================================
@@ -448,13 +659,44 @@ def write_csv_row(writer, values):
     writer.WriteLine(u",".join(escaped_values))
 
 
-def save_csv(issue_rows, summary_data, qc_status):
-    """전체 QC 결과를 UTF-8 BOM CSV로 저장한다."""
+def write_csv_metadata(writer, summary_data, qc_status):
+    """Full 및 Summary CSV에 공통 Report 정보를 작성한다."""
+    write_csv_row(writer, [u"Report Version", VERSION])
+    write_csv_row(writer, [u"QC Status", qc_status])
+    write_csv_row(
+        writer,
+        [u"Checked Sheets", summary_data["checked_sheets"]]
+    )
+    write_csv_row(
+        writer,
+        [u"Checked Views", summary_data["checked_views"]]
+    )
+    write_csv_row(
+        writer,
+        [u"Sheet Issues", summary_data["sheet_issues"]]
+    )
+    write_csv_row(
+        writer,
+        [u"View Issues", summary_data["view_issues"]]
+    )
+    write_csv_row(
+        writer,
+        [u"Parameter Issues", summary_data["parameter_issues"]]
+    )
+    write_csv_row(
+        writer,
+        [u"Total Issues", summary_data["total_issues"]]
+    )
+    write_csv_row(writer, [u"High", summary_data["high_count"]])
+    write_csv_row(writer, [u"Medium", summary_data["medium_count"]])
+    write_csv_row(writer, [u"Low", summary_data["low_count"]])
+    writer.WriteLine(u"")
 
+
+def save_full_csv(issue_rows, summary_data, qc_status, timestamp):
+    """모든 상세 Issue를 UTF-8 BOM Full CSV로 저장한다."""
     save_folder = get_save_folder()
-    timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
-
-    file_name = u"Revit_QC_v1.8_{0}.csv".format(timestamp)
+    file_name = u"Revit_QC_v1.9_Full_{0}.csv".format(timestamp)
     csv_path = Path.Combine(save_folder, file_name)
 
     writer = None
@@ -462,47 +704,7 @@ def save_csv(issue_rows, summary_data, qc_status):
     try:
         utf8_bom = UTF8Encoding(True)
         writer = StreamWriter(csv_path, False, utf8_bom)
-
-        write_csv_row(writer, [u"Report Version", VERSION])
-        write_csv_row(writer, [u"QC Status", qc_status])
-        write_csv_row(
-            writer,
-            [u"Checked Sheets", summary_data["checked_sheets"]]
-        )
-        write_csv_row(
-            writer,
-            [u"Checked Views", summary_data["checked_views"]]
-        )
-        write_csv_row(
-            writer,
-            [u"Sheet Issues", summary_data["sheet_issues"]]
-        )
-        write_csv_row(
-            writer,
-            [u"View Issues", summary_data["view_issues"]]
-        )
-        write_csv_row(
-            writer,
-            [u"Parameter Issues", summary_data["parameter_issues"]]
-        )
-        write_csv_row(
-            writer,
-            [u"Total Issues", summary_data["total_issues"]]
-        )
-        write_csv_row(
-            writer,
-            [u"High", summary_data["high_count"]]
-        )
-        write_csv_row(
-            writer,
-            [u"Medium", summary_data["medium_count"]]
-        )
-        write_csv_row(
-            writer,
-            [u"Low", summary_data["low_count"]]
-        )
-
-        writer.WriteLine(u"")
+        write_csv_metadata(writer, summary_data, qc_status)
 
         write_csv_row(
             writer,
@@ -511,11 +713,59 @@ def save_csv(issue_rows, summary_data, qc_status):
                 u"Item Type / Number",
                 u"Item Name",
                 u"Severity",
-                u"QC Item"
+                u"QC Item",
+                u"Issue Message",
+                u"Original Issue Detail"
             ]
         )
 
         for row in issue_rows:
+            qc_item, issue_message = get_issue_group_fields(row)
+            write_csv_row(
+                writer,
+                [
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                    qc_item,
+                    issue_message,
+                    row[4]
+                ]
+            )
+
+    finally:
+        if writer is not None:
+            writer.Close()
+
+    return csv_path
+
+
+def save_summary_csv(group_rows, summary_data, qc_status, timestamp):
+    """그룹화된 Issue만 UTF-8 BOM Summary CSV로 저장한다."""
+    save_folder = get_save_folder()
+    file_name = u"Revit_QC_v1.9_Summary_{0}.csv".format(timestamp)
+    csv_path = Path.Combine(save_folder, file_name)
+    writer = None
+
+    try:
+        utf8_bom = UTF8Encoding(True)
+        writer = StreamWriter(csv_path, False, utf8_bom)
+        write_csv_metadata(writer, summary_data, qc_status)
+
+        write_csv_row(
+            writer,
+            [
+                u"Category",
+                u"Item Type",
+                u"QC Item",
+                u"Severity",
+                u"Count",
+                u"Sample Items"
+            ]
+        )
+
+        for row in group_rows:
             write_csv_row(writer, row)
 
     finally:
@@ -864,6 +1114,8 @@ for row in issue_rows:
 
 
 total_issue_count = len(issue_rows)
+issue_group_rows = build_issue_group_rows(issue_rows)
+key_issue_rows = build_key_issue_rows(issue_rows)
 
 
 summary_data = {
@@ -897,7 +1149,7 @@ else:
 
 
 # ============================================================
-# Summary 출력
+# Filtered Portfolio Report 출력
 # ============================================================
 
 summary_rows = [
@@ -918,12 +1170,11 @@ summary_rows = [
 output.print_html(
     u"""
     <div style="font-family:Segoe UI, Arial, sans-serif;">
-        <h2>Revit Sheet + View + Parameter QC Report</h2>
-        <p>
-            <strong>Version:</strong> {0}<br>
-            <strong>QC Status:</strong>
-            <span style="color:{1}; font-weight:bold;">{2}</span>
-        </p>
+        <h2>Revit QC Report Automation</h2>
+        <h3 style="margin-bottom:4px;">Version</h3>
+        <div>{0}</div>
+        <h3 style="margin-bottom:4px;">QC Status</h3>
+        <div style="color:{1}; font-size:16px; font-weight:bold;">{2}</div>
     </div>
     """.format(
         html_escape(VERSION),
@@ -949,26 +1200,28 @@ output.print_html_table(
 
 
 # ============================================================
-# 상세 Issue List 출력
+# Issue Group Summary
 # ============================================================
 
-if issue_rows:
+if issue_group_rows:
     output.print_html_table(
-        table_data=issue_rows,
-        title="QC Issue List",
+        table_data=issue_group_rows,
+        title="Issue Group Summary",
         columns=[
             "Category",
-            "Item Type / Number",
-            "Item Name",
+            "Item Type",
+            "QC Item",
             "Severity",
-            "QC Item"
+            "Count",
+            "Sample Items"
         ],
         column_widths=[
             "100px",
             "160px",
-            "300px",
+            "180px",
             "80px",
-            "320px"
+            "70px",
+            "360px"
         ],
         table_width_style="width:100%",
         row_striping=True
@@ -984,6 +1237,7 @@ else:
             background-color:#e8f5e9;
             color:#2e7d32;
             font-weight:bold;">
+            <strong>Issue Group Summary</strong><br>
             QC 항목이 발견되지 않았습니다.
         </div>
         """
@@ -991,41 +1245,107 @@ else:
 
 
 # ============================================================
-# CSV Export
+# Key Issue Samples
 # ============================================================
 
-try:
-    saved_csv_path = save_csv(
-        issue_rows,
-        summary_data,
-        qc_status
+if key_issue_rows:
+    output.print_html_table(
+        table_data=key_issue_rows,
+        title="Key Issue Samples",
+        columns=[
+            "Category",
+            "Item Type",
+            "Item Name",
+            "Severity",
+            "QC Item",
+            "Issue Message"
+        ],
+        column_widths=[
+            "100px",
+            "150px",
+            "280px",
+            "80px",
+            "160px",
+            "220px"
+        ],
+        table_width_style="width:100%",
+        row_striping=True
     )
-
+else:
     output.print_html(
         u"""
-        <div style="
-            margin-top:12px;
-            padding:8px;
-            border-left:4px solid #2e7d32;
-            background-color:#f1f8e9;">
-            <strong>CSV 저장 완료</strong><br>
-            {0}
+        <div style="margin-top:12px; color:#616161;">
+            <strong>Key Issue Samples</strong><br>
+            표시할 핵심 Issue가 없습니다.
         </div>
-        """.format(html_escape(saved_csv_path))
+        """
+    )
+
+
+# ============================================================
+# Full CSV / Summary CSV Export
+# ============================================================
+
+csv_timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
+saved_full_csv_path = u""
+saved_summary_csv_path = u""
+full_csv_error = u""
+summary_csv_error = u""
+
+try:
+    saved_full_csv_path = save_full_csv(
+        issue_rows,
+        summary_data,
+        qc_status,
+        csv_timestamp
     )
 
 except Exception as ex:
-    output.print_html(
-        u"""
-        <div style="
-            margin-top:12px;
-            padding:8px;
-            border-left:4px solid #c62828;
-            background-color:#ffebee;
-            color:#b71c1c;">
-            <strong>CSV 저장 경고</strong><br>
-            CSV 저장에는 실패했지만 QC 검사는 완료되었습니다.<br>
-            오류 내용: {0}
-        </div>
-        """.format(html_escape(ex))
+    full_csv_error = to_text(ex)
+
+
+try:
+    saved_summary_csv_path = save_summary_csv(
+        issue_group_rows,
+        summary_data,
+        qc_status,
+        csv_timestamp
     )
+
+except Exception as ex:
+    summary_csv_error = to_text(ex)
+
+
+if not is_empty(saved_full_csv_path):
+    full_csv_result = html_escape(saved_full_csv_path)
+else:
+    full_csv_result = u"저장 실패: {0}".format(
+        html_escape(full_csv_error)
+    )
+
+if not is_empty(saved_summary_csv_path):
+    summary_csv_result = html_escape(saved_summary_csv_path)
+else:
+    summary_csv_result = u"저장 실패: {0}".format(
+        html_escape(summary_csv_error)
+    )
+
+output.print_html(
+    u"""
+    <div style="
+        margin-top:12px;
+        padding:10px;
+        border-left:4px solid #ef6c00;
+        background-color:#fff8e1;">
+        <strong>CSV Export Path</strong><br>
+        <strong>Full CSV:</strong> {0}<br>
+        <strong>Summary CSV:</strong> {1}<br>
+        <span style="color:#616161;">
+            CSV 저장 실패가 발생해도 QC 검사는 완료됩니다.
+        </span>
+    </div>
+    """.format(
+        full_csv_result,
+        summary_csv_result
+    )
+)
