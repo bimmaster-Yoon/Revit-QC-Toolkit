@@ -1,0 +1,38 @@
+# Revit files
+*.rvt
+*.rfa
+*.rte
+*.rft
+*.bak
+*.slog
+*.*.rvt
+*.*.rfa
+
+# Large compressed files
+*.zip
+*.7z
+*.rar
+
+# CSV exports
+*.csv
+!sample_output/*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Sensitive project data
+private/
+source_rvt/
+real_project_files/
+screenshots/raw/
