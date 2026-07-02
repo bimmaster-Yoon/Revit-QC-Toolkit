@@ -12,6 +12,13 @@ Codex-assisted pyRevit tool for Revit 2026 drawing QC.
 - Read-only model checking
 - Git-based version control
 
+## v2.2 - Maintainable Plugin Structure
+
+단일 `script.py`에 있던 수집, Sheet/View/Parameter 검사, 그룹화, CSV Export,
+pyRevit Output 로직을 `lib/` 모듈로 분리했습니다. 검사 기준과 화면 Sample 설정은
+`config/qc_config_default.json`에서 관리하며, `script.py`는 실행 순서를 연결하는
+read-only 진입점 역할만 담당합니다.
+
 ## v2.1 - Compact Portfolio Report
 
 포트폴리오 캡처용 Compact Summary에 검사 수량, Review Item 수,

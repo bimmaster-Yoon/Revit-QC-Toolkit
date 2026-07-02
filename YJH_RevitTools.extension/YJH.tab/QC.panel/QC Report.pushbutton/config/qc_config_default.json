@@ -1,0 +1,74 @@
+{
+  "version": "v2.2 - Maintainable Plugin Structure",
+  "sheet_qc": {
+    "require_sheet_number": true,
+    "require_sheet_name": true,
+    "require_placed_view": true
+  },
+  "view_qc": {
+    "supported_view_types": [
+      "FloorPlan",
+      "CeilingPlan",
+      "Elevation",
+      "Section",
+      "Detail",
+      "DraftingView",
+      "ThreeD"
+    ],
+    "template_required_view_types": [
+      "FloorPlan",
+      "CeilingPlan",
+      "Elevation",
+      "Section"
+    ],
+    "sheet_required_view_types": [
+      "FloorPlan",
+      "CeilingPlan",
+      "Elevation",
+      "Section",
+      "Detail",
+      "DraftingView"
+    ],
+    "temporary_keywords": [
+      "Copy",
+      "복사",
+      "Temp",
+      "임시",
+      "Working",
+      "TEST"
+    ]
+  },
+  "parameter_qc": {
+    "rules": [
+      {
+        "built_in_category": "OST_Rooms",
+        "category_name": "Rooms",
+        "parameter_name": "RoomType"
+      },
+      {
+        "built_in_category": "OST_LightingFixtures",
+        "category_name": "Lighting Fixtures",
+        "parameter_name": "ITEMGROUP"
+      },
+      {
+        "built_in_category": "OST_ElectricalFixtures",
+        "category_name": "Electrical Fixtures",
+        "parameter_name": "ITEMGROUP"
+      },
+      {
+        "built_in_category": "OST_PlumbingFixtures",
+        "category_name": "Plumbing Fixtures",
+        "parameter_name": "ITEMGROUP"
+      }
+    ]
+  },
+  "display": {
+    "group_sample_max_length": 25,
+    "group_sample_limit": 3,
+    "key_issue_limit": 8,
+    "key_item_max_length": 35
+  },
+  "export": {
+    "file_prefix": "Revit_QC_v2.2"
+  }
+}

@@ -1,5 +1,21 @@
 # Workflow
 
+## v2.2 Module Flow
+
+1. `script.py` — config 로드 및 실행 순서 제어
+2. `collectors.py` — Sheet, 배치 View ID, View, Parameter 대상 수집
+3. `checks_sheet.py` — Sheet Number, Name, 배치 View 검사
+4. `checks_view.py` — View Name, 임시 키워드, Scale, Template, Sheet 배치 검사
+5. `checks_parameter.py` — Shared Parameter 존재 및 입력값 검사
+6. `grouping.py` — Review Group, Summary, 대표 Sample 생성
+7. `exporters.py` — Full CSV 및 Summary CSV 저장
+8. `report_ui.py` — Compact Summary와 Review 표 출력
+
+검사 기준은 `config/qc_config_default.json`에서 관리합니다. 각 모듈은 모델 요소를
+읽기만 하며 Transaction을 생성하지 않습니다.
+
+## Report Flow
+
 1. Codex Prompt
 2. pyRevit Script
 3. Revit Model Read-only Check

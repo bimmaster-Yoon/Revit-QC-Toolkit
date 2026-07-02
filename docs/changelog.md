@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2 - Maintainable Plugin Structure
+
+- `script.py`를 수집, 검사, 그룹화, Export, UI 모듈을 호출하는 실행 진입점으로 단순화
+- Revit 요소 수집 로직을 `lib/collectors.py`로 분리
+- Sheet, View, Parameter QC를 각각 독립 검사 모듈로 분리
+- 반복 Issue 그룹화 및 Summary 계산을 `lib/grouping.py`로 분리
+- Full CSV 및 Summary CSV 저장을 `lib/exporters.py`로 분리
+- pyRevit Compact Report 출력을 `lib/report_ui.py`로 분리
+- 검사 Category, View Type, 임시 키워드, Parameter 규칙을 JSON config로 이동
+- v2.1 Compact Summary, Review Group Summary, Review Item Samples 결과 유지
+- Transaction을 사용하지 않는 read-only 검사 방식 유지
+
 ## v2.1 - Compact Portfolio Report
 
 - pyRevit Output 상단에 7개 핵심 항목으로 구성된 Compact Summary 적용
