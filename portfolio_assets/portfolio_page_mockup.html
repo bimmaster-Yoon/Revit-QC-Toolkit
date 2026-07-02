@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Revit QC Report Automation — Portfolio Page Mockup</title>
+  <style>
+    :root { --navy:#14253d; --orange:#f47c20; --gray:#697386; --line:#dfe4ea; --soft:#f5f7f9; --paper:#fff; }
+    * { box-sizing:border-box; }
+    @page { size:A4 landscape; margin:0; }
+    body { margin:0; background:#dfe3e8; color:var(--navy); font-family:Arial,"Noto Sans KR",sans-serif; }
+    .page { width:297mm; height:210mm; margin:18px auto; padding:12mm; overflow:hidden; background:var(--paper); box-shadow:0 18px 60px rgba(20,37,61,.18); display:grid; grid-template-rows:27mm 104mm 51mm; gap:2mm; }
+    header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid var(--navy); padding-bottom:4mm; }
+    .kicker { color:var(--orange); font-size:8pt; font-weight:700; letter-spacing:1.8px; margin-bottom:2.5mm; }
+    h1 { margin:0; font-size:23pt; line-height:1; letter-spacing:1px; }
+    .subtitle { margin-top:2.5mm; color:var(--gray); font-size:9.5pt; }
+    .meta { text-align:right; font-size:7.5pt; line-height:1.7; color:var(--gray); }
+    .meta strong { color:var(--navy); }
+
+    .content { display:grid; grid-template-columns:1.12fr .88fr 1fr; gap:4mm; min-height:0; padding-top:3mm; }
+    .panel { min-width:0; border-top:3px solid var(--navy); padding-top:3mm; }
+    .panel-label { display:flex; justify-content:space-between; align-items:center; margin-bottom:2.5mm; }
+    h2 { margin:0; font-size:9pt; letter-spacing:1px; }
+    .index { color:var(--orange); font-size:7.5pt; font-weight:700; }
+    .asset { width:100%; display:block; border:1px solid var(--line); background:#fff; }
+    .workflow .asset { margin-bottom:3mm; }
+    .workflow p { margin:0; font-size:7.7pt; line-height:1.55; color:var(--gray); }
+    .workflow strong { color:var(--navy); }
+    .summary .asset { max-height:83mm; object-fit:contain; object-position:top; }
+
+    .review-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:6.6pt; }
+    .review-table th { padding:2.2mm 1.5mm; text-align:left; color:#fff; background:var(--navy); font-weight:700; }
+    .review-table td { padding:2.35mm 1.5mm; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.35; overflow-wrap:anywhere; }
+    .review-table tr:nth-child(even) td { background:var(--soft); }
+    .sev-high { color:#b3261e; font-weight:700; }
+    .sev-mid { color:#b25a00; font-weight:700; }
+    .note { margin-top:3mm; padding:3mm; border-left:3px solid var(--orange); background:#fff7f0; color:#6c503c; font-size:7pt; line-height:1.45; }
+
+    footer { display:grid; grid-template-columns:2.3fr 1fr; gap:4mm; padding-top:3mm; border-top:1px solid var(--line); min-height:0; }
+    .timeline img { width:100%; height:40mm; object-fit:contain; object-position:top; }
+    .before-after { border-left:1px solid var(--line); padding-left:4mm; }
+    .before-after h3 { margin:0 0 3mm; font-size:8.5pt; letter-spacing:.8px; }
+    .change { display:grid; grid-template-columns:16mm 1fr; gap:2mm; margin-bottom:3mm; font-size:7pt; line-height:1.4; }
+    .tag { padding:1.4mm; text-align:center; background:var(--navy); color:#fff; font-size:6.5pt; font-weight:700; }
+    .tag.after { background:var(--orange); }
+    .footnote { margin-top:2mm; color:var(--gray); font-size:6.5pt; }
+    @media print { body { background:#fff; } .page { margin:0; box-shadow:none; } }
+    @media (max-width:1100px) { .page { transform-origin:top left; } }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header>
+      <div>
+        <div class="kicker">BIM / DX · QUALITY CONTROL WORKFLOW</div>
+        <h1>REVIT QC REPORT AUTOMATION</h1>
+        <div class="subtitle">Codex-assisted pyRevit Workflow</div>
+      </div>
+      <div class="meta"><strong>REVIT 2026 + pyRevit</strong><br>READ-ONLY MODEL CHECK<br>COMPACT PORTFOLIO REPORT · v2.1</div>
+    </header>
+
+    <section class="content">
+      <div class="panel workflow">
+        <div class="panel-label"><h2>WORKFLOW DIAGRAM</h2><span class="index">01</span></div>
+        <img class="asset" src="workflow_diagram.svg" alt="Codex Prompt부터 CSV Export까지 이어지는 Revit QC 흐름">
+        <p><strong>검토 기준을 구조화하고 pyRevit 스크립트로 연결하여</strong> 모델을 수정하지 않은 상태에서 Sheet, View, Parameter 정보를 수집했습니다. 반복 검토 항목은 Review Group으로 정리하고 상세값은 CSV에 유지했습니다.</p>
+      </div>
+
+      <div class="panel summary">
+        <div class="panel-label"><h2>QC SUMMARY</h2><span class="index">02</span></div>
+        <img class="asset" src="qc_summary_cards.svg" alt="Revit QC 핵심 수치 카드">
+      </div>
+
+      <div class="panel review">
+        <div class="panel-label"><h2>REVIEW GROUP SUMMARY</h2><span class="index">03</span></div>
+        <table class="review-table" aria-label="Review Group Summary example">
+          <thead><tr><th style="width:24%">Category</th><th style="width:23%">Item Type</th><th style="width:26%">QC Item</th><th style="width:15%">Severity</th><th style="width:12%">Mode</th></tr></thead>
+          <tbody>
+            <tr><td>Parameter QC</td><td>Rooms</td><td>RoomType</td><td class="sev-high">High</td><td>Group</td></tr>
+            <tr><td>View QC</td><td>Floor Plan</td><td>Sheet Placement</td><td class="sev-mid">Medium</td><td>Group</td></tr>
+            <tr><td>Sheet QC</td><td>A-Series</td><td>Placed Views</td><td class="sev-mid">Medium</td><td>Review</td></tr>
+            <tr><td>View QC</td><td>Section</td><td>View Template</td><td class="sev-mid">Medium</td><td>Group</td></tr>
+          </tbody>
+        </table>
+        <div class="note"><strong>STRUCTURE EXAMPLE</strong><br>화면은 대표 그룹과 Sample만 간결하게 표시하고, Full CSV에는 요소별 전체 검토 데이터를 보존합니다.</div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="timeline"><img src="git_version_timeline.svg" alt="v1.8에서 v2.1까지의 Git 버전 타임라인"></div>
+      <div class="before-after">
+        <h3>BEFORE / AFTER</h3>
+        <div class="change"><span class="tag">BEFORE</span><span>반복 항목이 요소별로 출력되어 핵심 검토 범위를 빠르게 파악하기 어려움</span></div>
+        <div class="change"><span class="tag after">AFTER</span><span>Review Group 중심 요약과 Full / Summary CSV 분리로 검토성과 추적성 동시 확보</span></div>
+        <div class="footnote">Git-based version control · verified working states · rollback-ready</div>
+      </div>
+    </footer>
+  </article>
+</body>
+</html>

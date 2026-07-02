@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" role="img" aria-labelledby="title desc">
+  <title id="title">Git Version Timeline for Revit QC Report Automation</title>
+  <desc id="desc">v1.8 Sheet View Parameter QC, v1.9 Filtered Report Group Summary, v2.1 Compact Portfolio Report로 이어지는 Git 버전 흐름</desc>
+  <rect width="1600" height="500" fill="#ffffff"/>
+  <text x="48" y="62" fill="#14253d" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="30" font-weight="700" letter-spacing="1.5">VERSION DEVELOPMENT &amp; ROLLBACK</text>
+  <text x="48" y="95" fill="#697386" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="16">Incremental QC refinement managed through Git baselines and tagged working states</text>
+
+  <line x1="180" y1="238" x2="1420" y2="238" stroke="#14253d" stroke-width="4"/>
+  <line x1="180" y1="238" x2="1420" y2="238" stroke="#f47c20" stroke-width="4" stroke-dasharray="80 540"/>
+
+  <g font-family="Arial, 'Noto Sans KR', sans-serif">
+    <g>
+      <circle cx="180" cy="238" r="24" fill="#ffffff" stroke="#f47c20" stroke-width="7"/>
+      <rect x="72" y="142" width="300" height="68" rx="8" fill="#14253d"/>
+      <text x="96" y="174" fill="#f47c20" font-size="17" font-weight="700">v1.8</text>
+      <text x="96" y="197" fill="#ffffff" font-size="16">WORKING BASELINE</text>
+      <text x="72" y="298" fill="#14253d" font-size="20" font-weight="700">Sheet + View + Parameter QC</text>
+      <text x="72" y="329" fill="#697386" font-size="15">Core read-only inspection logic</text>
+      <text x="72" y="352" fill="#697386" font-size="15">and first CSV export</text>
+    </g>
+    <g>
+      <circle cx="800" cy="238" r="24" fill="#ffffff" stroke="#f47c20" stroke-width="7"/>
+      <rect x="650" y="142" width="300" height="68" rx="8" fill="#14253d"/>
+      <text x="674" y="174" fill="#f47c20" font-size="17" font-weight="700">v1.9</text>
+      <text x="674" y="197" fill="#ffffff" font-size="16">FILTERED REPORT</text>
+      <text x="650" y="298" fill="#14253d" font-size="20" font-weight="700">Group Summary</text>
+      <text x="650" y="329" fill="#697386" font-size="15">Repeated review items grouped</text>
+      <text x="650" y="352" fill="#697386" font-size="15">Full CSV + Summary CSV</text>
+    </g>
+    <g>
+      <circle cx="1420" cy="238" r="28" fill="#f47c20" stroke="#ffffff" stroke-width="7"/>
+      <rect x="1228" y="142" width="324" height="68" rx="8" fill="#f47c20"/>
+      <text x="1252" y="174" fill="#14253d" font-size="17" font-weight="700">v2.1</text>
+      <text x="1252" y="197" fill="#ffffff" font-size="16">COMPACT PORTFOLIO REPORT</text>
+      <text x="1228" y="298" fill="#14253d" font-size="20" font-weight="700">Portfolio-ready Output</text>
+      <text x="1228" y="329" fill="#697386" font-size="15">Compact summary and concise</text>
+      <text x="1228" y="352" fill="#697386" font-size="15">review-group presentation</text>
+    </g>
+  </g>
+
+  <rect x="48" y="410" width="1504" height="54" rx="8" fill="#f4f6f8" stroke="#dfe4ea"/>
+  <path d="M78 437 h34 m-12 -12 l12 12 -12 12" fill="none" stroke="#f47c20" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="132" y="443" fill="#14253d" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="17" font-weight="700">GIT-BASED ROLLBACK WORKFLOW</text>
+  <text x="418" y="443" fill="#697386" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="16">Each verified Revit state is committed and tagged before the next iteration.</text>
+</svg>

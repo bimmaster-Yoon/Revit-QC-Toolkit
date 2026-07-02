@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Issue Grouping Code Preview</title>
+  <style>
+    :root { --navy:#14253d; --orange:#f47c20; --gray:#697386; --line:#dfe4ea; --paper:#fff; --code:#101b2b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#eef1f4; color:var(--navy); font-family:Arial,"Noto Sans KR",sans-serif; }
+    .frame { width:min(1080px,calc(100vw - 40px)); margin:40px auto; background:var(--paper); border:1px solid var(--line); box-shadow:0 18px 50px rgba(20,37,61,.12); }
+    header { display:flex; justify-content:space-between; align-items:flex-end; padding:26px 30px 20px; border-bottom:1px solid var(--line); }
+    h1 { margin:0; font-size:24px; letter-spacing:.7px; }
+    .label { color:var(--orange); font-size:12px; font-weight:700; letter-spacing:1.4px; }
+    .code { padding:24px 0 28px; overflow:auto; background:var(--code); color:#dce5ef; font:14px/1.65 Consolas,"SFMono-Regular",monospace; counter-reset:line 305; }
+    .line { display:block; min-width:920px; padding:0 28px 0 74px; position:relative; white-space:pre; }
+    .line::before { counter-increment:line; content:counter(line); position:absolute; left:0; width:54px; color:#607087; text-align:right; }
+    .line:hover { background:rgba(255,255,255,.035); }
+    .kw { color:#ff9d57; } .fn { color:#77d6e8; } .str { color:#a8d58d; } .num { color:#c7a7ff; } .name { color:#dce5ef; }
+    footer { display:flex; justify-content:space-between; padding:16px 30px; color:var(--gray); font-size:12px; }
+    footer strong { color:var(--navy); }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <header>
+      <div><div class="label">REPRESENTATIVE LOGIC</div><h1>Repeated QC Item Grouping</h1></div>
+      <div class="label">PYREVIT · READ ONLY</div>
+    </header>
+    <code class="code" aria-label="script.py issue grouping excerpt">
+<span class="line"><span class="kw">def</span> <span class="fn">build_issue_group_rows</span>(</span>
+<span class="line">    issue_rows,</span>
+<span class="line">    shorten_samples=<span class="kw">False</span>,</span>
+<span class="line">    sample_max_length=<span class="num">35</span>,</span>
+<span class="line">    sample_limit=<span class="num">5</span></span>
+<span class="line">):</span>
+<span class="line">    <span class="str">"""Category, Item Type, QC Item, Issue Message 기준으로 그룹화한다."""</span></span>
+<span class="line">    grouped_issues = {}</span>
+<span class="line"> </span>
+<span class="line">    <span class="kw">for</span> row <span class="kw">in</span> issue_rows:</span>
+<span class="line">        category = row[<span class="num">0</span>]</span>
+<span class="line">        item_type = row[<span class="num">1</span>]</span>
+<span class="line">        item_name = row[<span class="num">2</span>]</span>
+<span class="line">        severity = row[<span class="num">3</span>]</span>
+<span class="line">        qc_item, issue_message = get_issue_group_fields(row)</span>
+<span class="line">        group_key = (</span>
+<span class="line">            category,</span>
+<span class="line">            item_type,</span>
+<span class="line">            qc_item,</span>
+<span class="line">            issue_message</span>
+<span class="line">        )</span>
+    </code>
+    <footer><span><strong>Source</strong> · verified v2.1 script excerpt</span><span>Full detail retained in CSV exports</span></footer>
+  </main>
+</body>
+</html>

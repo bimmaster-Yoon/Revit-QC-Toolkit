@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">Revit QC Summary Cards</title>
+  <desc id="desc">Sheets 105, Views 302, Parameter Elements 860, Review Items 365, Issue Groups 14, Full CSV와 Summary CSV 출력</desc>
+  <defs>
+    <filter id="cardShadow" x="-10%" y="-20%" width="120%" height="150%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#14253d" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <rect width="1400" height="760" fill="#ffffff"/>
+  <text x="48" y="64" fill="#14253d" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="32" font-weight="700" letter-spacing="1.5">COMPACT QC SUMMARY</text>
+  <text x="48" y="99" fill="#697386" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="17">A model-wide review snapshot generated from a read-only Revit check</text>
+
+  <g font-family="Arial, 'Noto Sans KR', sans-serif" filter="url(#cardShadow)">
+    <g>
+      <rect x="48" y="150" width="410" height="220" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect x="48" y="150" width="8" height="220" rx="4" fill="#f47c20"/>
+      <text x="88" y="205" fill="#697386" font-size="17" font-weight="700" letter-spacing="1">SHEETS</text>
+      <text x="88" y="300" fill="#14253d" font-size="72" font-weight="700">105</text>
+      <text x="88" y="338" fill="#697386" font-size="15">Checked drawing sheets</text>
+    </g>
+    <g>
+      <rect x="495" y="150" width="410" height="220" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect x="495" y="150" width="8" height="220" rx="4" fill="#f47c20"/>
+      <text x="535" y="205" fill="#697386" font-size="17" font-weight="700" letter-spacing="1">VIEWS</text>
+      <text x="535" y="300" fill="#14253d" font-size="72" font-weight="700">302</text>
+      <text x="535" y="338" fill="#697386" font-size="15">Checked documentation views</text>
+    </g>
+    <g>
+      <rect x="942" y="150" width="410" height="220" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect x="942" y="150" width="8" height="220" rx="4" fill="#f47c20"/>
+      <text x="982" y="205" fill="#697386" font-size="17" font-weight="700" letter-spacing="1">PARAMETER ELEMENTS</text>
+      <text x="982" y="300" fill="#14253d" font-size="72" font-weight="700">860</text>
+      <text x="982" y="338" fill="#697386" font-size="15">Checked parameter targets</text>
+    </g>
+    <g>
+      <rect x="48" y="410" width="410" height="220" rx="12" fill="#14253d"/>
+      <rect x="48" y="410" width="8" height="220" rx="4" fill="#f47c20"/>
+      <text x="88" y="465" fill="#c9d1dc" font-size="17" font-weight="700" letter-spacing="1">REVIEW ITEMS</text>
+      <text x="88" y="560" fill="#ffffff" font-size="72" font-weight="700">365</text>
+      <text x="88" y="598" fill="#c9d1dc" font-size="15">Detailed items retained in Full CSV</text>
+    </g>
+    <g>
+      <rect x="495" y="410" width="410" height="220" rx="12" fill="#fff7f0" stroke="#f47c20" stroke-width="2"/>
+      <rect x="495" y="410" width="8" height="220" rx="4" fill="#f47c20"/>
+      <text x="535" y="465" fill="#a34c0a" font-size="17" font-weight="700" letter-spacing="1">ISSUE GROUPS</text>
+      <text x="535" y="560" fill="#f47c20" font-size="72" font-weight="700">14</text>
+      <text x="535" y="598" fill="#7c5a43" font-size="15">Repeated items consolidated</text>
+    </g>
+    <g>
+      <rect x="942" y="410" width="410" height="220" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect x="942" y="410" width="8" height="220" rx="4" fill="#f47c20"/>
+      <text x="982" y="465" fill="#697386" font-size="17" font-weight="700" letter-spacing="1">EXPORT</text>
+      <text x="982" y="526" fill="#14253d" font-size="31" font-weight="700">FULL CSV</text>
+      <text x="982" y="565" fill="#14253d" font-size="31" font-weight="700">SUMMARY CSV</text>
+      <text x="982" y="601" fill="#697386" font-size="15">Detail + review group datasets</text>
+    </g>
+  </g>
+
+  <line x1="48" y1="692" x2="1352" y2="692" stroke="#dfe4ea"/>
+  <circle cx="62" cy="724" r="7" fill="#c62828"/>
+  <text x="82" y="730" fill="#14253d" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="16" font-weight="700">QC STATUS · REVIEW REQUIRED</text>
+  <text x="1352" y="730" text-anchor="end" fill="#697386" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14">READ-ONLY MODEL CHECK</text>
+</svg>
