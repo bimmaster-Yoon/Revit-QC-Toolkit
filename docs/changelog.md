@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.3 - QC Toolkit Buttons
+
+- 기존 `QC Report.pushbutton`을 `Run Full QC.pushbutton`으로 이전
+- Sheet + View + Parameter 전체 검사 및 Full/Summary CSV 기능 유지
+- Sheet + View만 검사하는 `Quick QC.pushbutton` 추가
+- 공통 JSON 경로를 표시하고 여는 `QC Settings.pushbutton` 추가
+- 마지막 Summary CSV를 여는 `Open Last Report.pushbutton` 추가
+- 버튼 역할과 read-only 방식을 설명하는 `Help.pushbutton` 추가
+- 공통 `lib`, `config`, `reports`를 extension 루트로 이동
+- Full QC와 Quick QC 실행 후 `reports/latest_report_path.txt` 갱신
+- 5개 버튼에 기존 icon.png를 임시 공통 아이콘으로 적용
+- 각 버튼별 tooltip.md 추가
+- Transaction을 사용하지 않는 read-only 방식 유지
+
 ## v2.2 - Maintainable Plugin Structure
 
 - `script.py`를 수집, 검사, 그룹화, Export, UI 모듈을 호출하는 실행 진입점으로 단순화

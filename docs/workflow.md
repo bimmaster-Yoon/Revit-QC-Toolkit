@@ -1,5 +1,19 @@
 # Workflow
 
+## v2.3 Toolkit Buttons
+
+| Button | Role | Export |
+| --- | --- | --- |
+| Run Full QC | Sheet + View + Parameter QC, Compact Summary, Review Group Summary | Full CSV + Summary CSV |
+| Quick QC | Sheet + View QC, 빠른 Compact Summary | Summary CSV |
+| QC Settings | 공통 JSON 설정 경로 표시 및 기본 편집기로 열기 | 없음 |
+| Open Last Report | 마지막 Summary CSV 또는 HTML Report 열기 | 없음 |
+| Help | 버튼별 사용법과 read-only 방식 안내 | 없음 |
+
+각 버튼은 자신의 `__file__`에서 extension 루트를 계산하고 공통 `lib` 및 `config`를
+참조합니다. Full QC와 Quick QC는 생성된 Summary CSV 경로를
+`reports/latest_report_path.txt`에 저장하며, 이 runtime 파일은 Git에서 제외합니다.
+
 ## v2.2 Module Flow
 
 1. `script.py` — config 로드 및 실행 순서 제어

@@ -12,6 +12,13 @@ Codex-assisted pyRevit tool for Revit 2026 drawing QC.
 - Read-only model checking
 - Git-based version control
 
+## v2.3 - QC Toolkit Buttons
+
+기존 단일 QC Report 버튼을 `Run Full QC`, `Quick QC`, `QC Settings`,
+`Open Last Report`, `Help`의 5개 버튼으로 분리했습니다. 공통 `lib`와 `config`는
+extension 루트에서 공유하며, Full QC와 Quick QC가 생성한 마지막 Summary CSV 경로는
+`reports/latest_report_path.txt`에 저장됩니다.
+
 ## v2.2 - Maintainable Plugin Structure
 
 단일 `script.py`에 있던 수집, Sheet/View/Parameter 검사, 그룹화, CSV Export,

@@ -36,3 +36,7 @@ private/
 source_rvt/
 real_project_files/
 screenshots/raw/
+
+# Runtime report history
+YJH_RevitTools.extension/reports/*
+!YJH_RevitTools.extension/reports/.gitkeep

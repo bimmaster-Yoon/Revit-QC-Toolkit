@@ -7,7 +7,7 @@ import os
 
 
 DEFAULT_CONFIG = {
-    "version": "v2.2 - Maintainable Plugin Structure",
+    "version": "v2.3 - QC Toolkit Buttons",
     "sheet_qc": {
         "require_sheet_number": True,
         "require_sheet_name": True,
@@ -56,7 +56,7 @@ DEFAULT_CONFIG = {
         "key_item_max_length": 35
     },
     "export": {
-        "file_prefix": "Revit_QC_v2.2"
+        "file_prefix": "Revit_QC_v2.3"
     }
 }
 

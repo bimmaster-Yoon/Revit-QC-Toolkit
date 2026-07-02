@@ -129,6 +129,64 @@ def render_report(
     )
 
 
+def render_quick_report(
+    output,
+    version,
+    summary_data,
+    qc_status,
+    issue_group_count,
+    saved_summary_csv_path,
+    summary_csv_error
+):
+    """Sheet + View Quick QC용 간결한 Summary를 출력한다."""
+    compact_summary_rows = [
+        [u"Checked Sheets", summary_data["checked_sheets"]],
+        [u"Checked Views", summary_data["checked_views"]],
+        [u"Total Review Items", summary_data["total_issues"]],
+        [u"Issue Groups", issue_group_count],
+        [u"QC Status", qc_status],
+        [u"Export", u"Summary CSV"]
+    ]
+
+    output.print_html(
+        u"""
+        <div style="font-family:Segoe UI, Arial, sans-serif;">
+            <h2>Revit Quick QC</h2>
+            <div style="color:#616161; margin-bottom:10px;">{0}</div>
+            <div style="color:#ef6c00; margin-bottom:10px;">
+                Sheet QC + View QC / Parameter QC 제외
+            </div>
+        </div>
+        """.format(html_escape(version))
+    )
+
+    output.print_html_table(
+        table_data=compact_summary_rows,
+        title="Quick QC Compact Summary",
+        columns=["Summary", "Value"],
+        column_widths=["260px", "220px"],
+        table_width_style="width:500px",
+        row_striping=True
+    )
+
+    summary_csv_result = _get_export_result(
+        saved_summary_csv_path,
+        summary_csv_error
+    )
+
+    output.print_html(
+        u"""
+        <div style="margin-top:12px; padding:10px; border-left:4px solid #ef6c00;
+            background-color:#fff8e1;">
+            <strong>Summary CSV:</strong> {0}<br>
+            <span style="color:#616161;">
+                Quick QC는 Parameter QC와 Full CSV를 생성하지 않습니다.
+            </span>
+        </div>
+        """.format(summary_csv_result)
+    )
+
+
 def _get_export_result(saved_path, error_message):
     if not is_empty(saved_path):
         return html_escape(saved_path)

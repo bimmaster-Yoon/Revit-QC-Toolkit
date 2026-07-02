@@ -1,5 +1,5 @@
 {
-  "version": "v2.2 - Maintainable Plugin Structure",
+  "version": "v2.3 - QC Toolkit Buttons",
   "sheet_qc": {
     "require_sheet_number": true,
     "require_sheet_name": true,
@@ -69,6 +69,6 @@
     "key_item_max_length": 35
   },
   "export": {
-    "file_prefix": "Revit_QC_v2.2"
+    "file_prefix": "Revit_QC_v2.3"
   }
 }

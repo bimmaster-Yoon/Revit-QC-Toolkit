@@ -11,12 +11,16 @@ from System import DateTime
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LIB_DIR = os.path.join(SCRIPT_DIR, "lib")
+EXTENSION_DIR = os.path.abspath(
+    os.path.join(SCRIPT_DIR, os.pardir, os.pardir, os.pardir)
+)
+LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
 CONFIG_PATH = os.path.join(
-    SCRIPT_DIR,
+    EXTENSION_DIR,
     "config",
     "qc_config_default.json"
 )
+REPORTS_DIR = os.path.join(EXTENSION_DIR, "reports")
 
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
@@ -40,7 +44,8 @@ from grouping import (
     build_summary_data,
     get_qc_status
 )
-from report_ui import render_report
+from report_history import write_latest_report_path
+from report_ui import html_escape, render_report
 
 
 config = load_config(CONFIG_PATH)
@@ -106,6 +111,7 @@ saved_full_csv_path = u""
 saved_summary_csv_path = u""
 full_csv_error = u""
 summary_csv_error = u""
+history_error = u""
 
 try:
     saved_full_csv_path = save_full_csv(
@@ -131,6 +137,12 @@ try:
 except Exception as ex:
     summary_csv_error = to_text(ex)
 
+if saved_summary_csv_path:
+    try:
+        write_latest_report_path(REPORTS_DIR, saved_summary_csv_path)
+    except Exception as ex:
+        history_error = to_text(ex)
+
 render_report(
     output,
     VERSION,
@@ -145,3 +157,12 @@ render_report(
     saved_summary_csv_path,
     summary_csv_error
 )
+
+if history_error:
+    output.print_html(
+        u"""
+        <div style="margin-top:10px; color:#b71c1c;">
+            마지막 리포트 경로 저장 실패: {0}
+        </div>
+        """.format(html_escape(history_error))
+    )
