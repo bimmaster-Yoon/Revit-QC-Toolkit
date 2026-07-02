@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.3.1 - Toolkit Icons and Tooltips
+
+- Run Full QC에 문서와 체크마크 아이콘 적용
+- Quick QC에 번개와 체크마크 아이콘 적용
+- QC Settings에 슬라이더 아이콘 적용
+- Open Last Report에 폴더와 문서 아이콘 적용
+- Help에 문서와 물음표 아이콘 적용
+- 5개 버튼 tooltip을 검사 범위와 사용 목적 중심으로 정리
+- 투명 배경, 다크 네이비 선, 오렌지 포인트의 공통 스타일 적용
+- 아이콘 생성 원본과 공통 스타일 자료를 extension `assets`에 보관
+- 포트폴리오용 Toolkit 버튼 배치 SVG 추가
+- QC 검사, CSV Export 및 read-only 기능 로직은 변경하지 않음
+
 ## v2.3 - QC Toolkit Buttons
 
 - 기존 `QC Report.pushbutton`을 `Run Full QC.pushbutton`으로 이전

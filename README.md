@@ -12,6 +12,12 @@ Codex-assisted pyRevit tool for Revit 2026 drawing QC.
 - Read-only model checking
 - Git-based version control
 
+## v2.3.1 - Toolkit Icons and Tooltips
+
+5개 Toolkit 버튼에 기능별 미니멀 아이콘과 간결한 tooltip을 적용했습니다.
+아이콘은 투명 배경의 64 x 64 PNG이며, 다크 네이비 선과 오렌지 포인트로
+포트폴리오 시각 체계를 통일했습니다. QC 검사와 Export 기능 로직은 변경하지 않았습니다.
+
 ## v2.3 - QC Toolkit Buttons
 
 기존 단일 QC Report 버튼을 `Run Full QC`, `Quick QC`, `QC Settings`,

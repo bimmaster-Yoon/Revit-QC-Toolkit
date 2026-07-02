@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" role="img" aria-labelledby="title desc">
+  <title id="title">Revit QC Toolkit Button Layout</title>
+  <desc id="desc">Run Full QC, Quick QC, QC Settings, Open Last Report, Help의 다섯 버튼 구성</desc>
+  <defs>
+    <filter id="shadow" x="-15%" y="-20%" width="130%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#14253d" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="500" fill="#ffffff"/>
+  <text x="48" y="64" fill="#14253d" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="31" font-weight="700" letter-spacing="1.5">REVIT QC TOOLKIT · BUTTON SYSTEM</text>
+  <text x="48" y="99" fill="#697386" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="17">Five focused commands built on a shared read-only QC engine</text>
+
+  <g font-family="Arial, 'Noto Sans KR', sans-serif" filter="url(#shadow)">
+    <g transform="translate(48 145)">
+      <rect width="270" height="225" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect width="270" height="7" rx="3.5" fill="#f47c20"/>
+      <path d="M72 43h58l20 20v78H72z" fill="#fff" stroke="#14253d" stroke-width="4"/><path d="M130 43v20h20" fill="none" stroke="#f47c20" stroke-width="4"/><path d="M95 105l13 13 27-31" fill="none" stroke="#f47c20" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="135" y="177" text-anchor="middle" fill="#14253d" font-size="20" font-weight="700">Run Full QC</text>
+      <text x="135" y="204" text-anchor="middle" fill="#697386" font-size="14">Sheet · View · Parameter</text>
+    </g>
+    <g transform="translate(356 145)">
+      <rect width="270" height="225" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect width="270" height="7" rx="3.5" fill="#f47c20"/>
+      <path d="M137 36L93 105h30l-15 45 58-73h-31l24-41z" fill="#f47c20" stroke="#14253d" stroke-width="4" stroke-linejoin="round"/><path d="M143 116l10 10 21-23" fill="none" stroke="#14253d" stroke-width="6" stroke-linecap="round"/>
+      <text x="135" y="177" text-anchor="middle" fill="#14253d" font-size="20" font-weight="700">Quick QC</text>
+      <text x="135" y="204" text-anchor="middle" fill="#697386" font-size="14">Sheet · View</text>
+    </g>
+    <g transform="translate(664 145)">
+      <rect width="270" height="225" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect width="270" height="7" rx="3.5" fill="#f47c20"/>
+      <g stroke="#14253d" stroke-width="4" fill="#fff"><path d="M78 60h114M78 94h114M78 128h114"/><circle cx="112" cy="60" r="10"/><circle cx="158" cy="94" r="10"/><circle cx="127" cy="128" r="10"/></g><g fill="#f47c20"><circle cx="112" cy="60" r="4"/><circle cx="158" cy="94" r="4"/><circle cx="127" cy="128" r="4"/></g>
+      <text x="135" y="177" text-anchor="middle" fill="#14253d" font-size="20" font-weight="700">QC Settings</text>
+      <text x="135" y="204" text-anchor="middle" fill="#697386" font-size="14">Shared config</text>
+    </g>
+    <g transform="translate(972 145)">
+      <rect width="270" height="225" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect width="270" height="7" rx="3.5" fill="#f47c20"/>
+      <path d="M130 36h54l17 17v64h-71z" fill="#fff" stroke="#14253d" stroke-width="4"/><path d="M184 36v17h17" fill="none" stroke="#f47c20" stroke-width="4"/><path d="M61 76h59l14 14h76l-11 58H69z" fill="#fff" stroke="#14253d" stroke-width="4" stroke-linejoin="round"/><path d="M68 91h137" stroke="#f47c20" stroke-width="6"/>
+      <text x="135" y="177" text-anchor="middle" fill="#14253d" font-size="20" font-weight="700">Open Last Report</text>
+      <text x="135" y="204" text-anchor="middle" fill="#697386" font-size="14">Latest summary</text>
+    </g>
+    <g transform="translate(1280 145)">
+      <rect width="270" height="225" rx="12" fill="#ffffff" stroke="#dfe4ea" stroke-width="2"/>
+      <rect width="270" height="7" rx="3.5" fill="#f47c20"/>
+      <path d="M90 36h77l20 20v95H90z" fill="#fff" stroke="#14253d" stroke-width="4"/><path d="M167 36v20h20" fill="none" stroke="#f47c20" stroke-width="4"/><text x="138" y="121" text-anchor="middle" fill="#f47c20" font-size="70" font-weight="700">?</text>
+      <text x="135" y="177" text-anchor="middle" fill="#14253d" font-size="20" font-weight="700">Help</text>
+      <text x="135" y="204" text-anchor="middle" fill="#697386" font-size="14">Toolkit guide</text>
+    </g>
+  </g>
+
+  <line x1="48" y1="420" x2="1550" y2="420" stroke="#dfe4ea"/>
+  <circle cx="60" cy="455" r="7" fill="#f47c20"/>
+  <text x="80" y="461" fill="#14253d" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="16" font-weight="700">SHARED LIB · SHARED CONFIG · READ-ONLY MODEL CHECK</text>
+  <text x="1550" y="461" text-anchor="end" fill="#697386" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14">REVIT 2026 + pyRevit</text>
+</svg>

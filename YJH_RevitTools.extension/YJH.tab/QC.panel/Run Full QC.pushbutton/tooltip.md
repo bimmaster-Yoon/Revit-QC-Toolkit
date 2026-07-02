@@ -1,8 +1,7 @@
 # Run Full QC
 
-Sheet QC, View QC, Parameter QC 전체를 실행합니다.
+Sheet, View, Parameter를 한 번에 점검하는 전체 QC입니다.
 
-- Compact Summary 및 Review Group Summary
-- Full CSV 및 Summary CSV Export
-- 마지막 Summary CSV 경로 저장
-- 모델을 수정하지 않는 read-only 검사
+- Sheet / View / Parameter 전체 검사
+- Full CSV / Summary CSV 출력
+- 모델을 수정하지 않는 read-only 방식
