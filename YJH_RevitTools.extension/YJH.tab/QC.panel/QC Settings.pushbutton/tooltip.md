@@ -1,7 +1,7 @@
 # QC Settings
 
-현재 사용하는 QC config를 확인하고 편집기로 엽니다.
+설정창에서 Styled XLSX용 외부 Python 경로를 선택하고 저장합니다.
 
-- 회사/프로젝트 기준에 맞게 Sheet, View, Parameter QC 기준 조정 가능
-- 공통 `qc_config_default.json`과 Git 제외 local override 사용
-- 외부 Python 및 openpyxl 상태 확인
+- JSON을 직접 수정하지 않고 Browse / Save / Clear 가능
+- 사용자 경로는 Git 제외 `qc_config_local.json`에만 저장
+- 외부 Python, openpyxl, helper 및 debug log 상태 확인

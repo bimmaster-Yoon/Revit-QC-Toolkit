@@ -823,6 +823,75 @@ def find_external_python_with_openpyxl(
     return None, u"; ".join(probe_errors)
 
 
+def probe_external_python_path(executable_path):
+    """선택된 Python 한 개만 실행하고 openpyxl 환경을 진단한다."""
+    python_path = to_text(executable_path).strip()
+    status = {
+        "external_python_path": python_path,
+        "external_python_detected": u"No",
+        "openpyxl_available": u"No",
+        "python_detail": u"",
+        "openpyxl_version": u"",
+        "probe_error": u""
+    }
+
+    if (
+        len(python_path) >= 2
+        and python_path[0] == u'"'
+        and python_path[-1] == u'"'
+    ):
+        python_path = python_path[1:-1]
+
+    python_path = os.path.expandvars(python_path)
+    status["external_python_path"] = python_path
+
+    if not python_path:
+        status["probe_error"] = u"External Python path is empty."
+        return status
+
+    version_probe = (
+        u"import sys; "
+        u"sys.stdout.write(sys.executable + '|' + sys.version.split()[0])"
+    )
+    exit_code, standard_output, standard_error = run_external_process(
+        python_path,
+        [u"-c", version_probe],
+        15000
+    )
+
+    if exit_code != 0:
+        status["probe_error"] = (
+            standard_error
+            or standard_output
+            or u"Selected Python could not be executed."
+        )
+        return status
+
+    status["external_python_detected"] = u"Yes"
+    status["python_detail"] = standard_output
+    openpyxl_probe = (
+        u"import openpyxl; "
+        u"import sys; sys.stdout.write(openpyxl.__version__)"
+    )
+    exit_code, standard_output, standard_error = run_external_process(
+        python_path,
+        [u"-c", openpyxl_probe],
+        15000
+    )
+
+    if exit_code == 0 and standard_output:
+        status["openpyxl_available"] = u"Yes"
+        status["openpyxl_version"] = standard_output
+        return status
+
+    status["probe_error"] = (
+        standard_error
+        or standard_output
+        or u"Selected Python does not have openpyxl."
+    )
+    return status
+
+
 def get_xlsx_debug_log_path(reports_dir):
     return os.path.join(reports_dir, "xlsx_helper_debug.log")
 

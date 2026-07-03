@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.5.2 - QC Settings UI Polish
+
+- JSON 기본 연결 프로그램 자동 실행 제거
+- 760 x 520 이상 WinForms 기반 `Revit QC Settings` 설정창 추가
+- Config 및 Styled XLSX Environment 상태를 읽기 전용 필드로 표시
+- `Browse Python...`에서 `python.exe` 선택 지원
+- 선택 경로를 Git 제외 `qc_config_local.json`에 저장하고 기존 local 키 유지
+- 선택된 Python만 실행해 Python 및 openpyxl 버전을 엄격하게 진단
+- Save 후 environment 상태 자동 갱신
+- Test 결과를 설정창과 pyRevit Output에 함께 표시
+- Open Config Folder, Open Debug Log, Clear Python Path 및 Close 기능 추가
+- Codex runtime cache 경로 사용 시 비차단 장기 사용 warning 표시
+- DPI 기준 스케일링, 1080 x 820 창과 4열 x 2행 Actions 배치로 문구 잘림 보정
+- 긴 경로는 tooltip을 유지하고 TextBox가 경로 시작부터 표시되도록 개선
+- 기존 QC 검사, Export Options, CSV 및 Styled XLSX 생성 흐름 유지
+
 ## v2.5.1 - Styled XLSX Report Polish
 
 - Styled XLSX 데이터 구조와 외부 Python helper 흐름 유지

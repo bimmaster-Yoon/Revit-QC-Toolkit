@@ -1,5 +1,21 @@
 # Workflow
 
+## v2.5.2 QC Settings UI
+
+1. QC Settings 버튼 실행
+2. Config 및 현재 Styled XLSX Environment 상태 확인
+3. `Browse Python...`으로 안정적인 local `python.exe` 선택
+4. `Save Python Path`로 Git 제외 `qc_config_local.json`에 저장
+5. `Test XLSX Environment`에서 Python 실행 및 openpyxl 버전 확인
+6. Export Options에서 Styled XLSX 선택
+7. External Python Helper가 보고용 XLSX 생성
+
+`Settings UI → Browse Python → Save Local Config → Test Environment → Styled XLSX Export`
+
+기본 `qc_config_default.json`은 수정하지 않습니다. 설정창은 기존 local JSON의 다른
+키를 유지하면서 `external_python_path`만 갱신합니다. JSON 파일 자체를 자동으로
+열지 않으며 Config 폴더와 debug log는 별도 버튼으로 확인합니다.
+
 ## v2.5.1 XLSX Report Layout
 
 1. 기존 QC 데이터와 Temporary JSON 구조 유지

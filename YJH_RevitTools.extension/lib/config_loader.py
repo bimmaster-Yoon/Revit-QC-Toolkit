@@ -140,3 +140,32 @@ def load_config(config_path, local_config_path=None):
         _merge_dict(config, _normalize_local_config(local_config))
 
     return config
+
+
+def save_local_external_python_path(local_config_path, python_path):
+    """local config의 다른 값을 보존하고 개인 Python 경로만 저장한다."""
+    local_config = {}
+
+    if os.path.isfile(local_config_path):
+        local_config = _load_json_object(local_config_path, "Local QC")
+
+    local_config["external_python_path"] = python_path or ""
+    config_folder = os.path.dirname(local_config_path)
+
+    if not os.path.isdir(config_folder):
+        os.makedirs(config_folder)
+
+    serialized_config = json.dumps(
+        local_config,
+        ensure_ascii=True,
+        indent=2,
+        sort_keys=True
+    )
+    if not isinstance(serialized_config, type(u"")):
+        serialized_config = serialized_config.decode("utf-8")
+
+    with io.open(local_config_path, "w", encoding="utf-8") as config_file:
+        config_file.write(serialized_config)
+        config_file.write(u"\n")
+
+    return local_config_path

@@ -12,6 +12,15 @@ Codex-assisted pyRevit tool for Revit 2026 drawing QC.
 - Read-only model checking
 - Git-based version control
 
+## v2.5.2 - QC Settings UI
+
+QC Settings에서 JSON을 직접 열거나 수정하지 않고 `Browse Python...`으로
+`python.exe`를 선택해 저장할 수 있습니다. 개인 경로는 Git에서 제외되는
+`config/qc_config_local.json`에만 기록하며, 기존 local 설정은 유지합니다.
+`Test XLSX Environment`에서 Python 실행, openpyxl 버전, helper와 debug log 상태를
+확인할 수 있습니다. Codex runtime cache 경로는 동작을 막지 않고 장기 사용 경고만
+표시합니다.
+
 ## v2.5.1 - Styled XLSX Report Polish
 
 Styled XLSX는 보고서형 `QC Summary`, 그룹 검토용 `Review Groups`, 대표 항목용
