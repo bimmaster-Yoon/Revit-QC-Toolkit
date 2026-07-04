@@ -465,6 +465,21 @@ class HelpForm(Form):
         self.content_panel.Controls.Add(footer)
         self.cards.append(footer)
 
+        contact_label = Label()
+        contact_label.Text = (
+            "Developed by JeongHo Yoon  |  Contact: yjhbim@gmail.com"
+        )
+        contact_label.Width = self._card_width()
+        contact_label.Height = 38
+        contact_label.AutoSize = False
+        contact_label.Font = get_font(9.0)
+        contact_label.ForeColor = MUTED_TEXT
+        contact_label.TextAlign = ContentAlignment.MiddleLeft
+        contact_label.Margin = Padding(0, 0, 0, 20)
+        contact_label.Padding = Padding(4, 0, 4, 0)
+        self.content_panel.Controls.Add(contact_label)
+        self.cards.append(contact_label)
+
     def _add_card(self, card):
         self.content_panel.Controls.Add(card)
         self.cards.append(card)

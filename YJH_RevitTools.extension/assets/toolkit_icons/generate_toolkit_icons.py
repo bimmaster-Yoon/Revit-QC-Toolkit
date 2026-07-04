@@ -20,7 +20,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 EXTENSION_DIR = os.path.abspath(
     os.path.join(SCRIPT_DIR, os.pardir, os.pardir)
 )
-PANEL_DIR = os.path.join(EXTENSION_DIR, "YJH.tab", "QC.panel")
+PANEL_DIR = os.path.join(EXTENSION_DIR, "Revit QC.tab", "QC Toolkit.panel")
 
 
 def p(value):

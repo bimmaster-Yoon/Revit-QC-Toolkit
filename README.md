@@ -1,124 +1,77 @@
-# Revit QC Report Automation
+# Revit QC Toolkit
 
-Codex-assisted pyRevit tool for Revit 2026 drawing QC.
+Revit 2026 모델의 Sheet, View, Parameter 상태를 점검하고 결과를 pyRevit Output과
+CSV/XLSX 보고서로 정리하는 pyRevit 기반 QC Toolkit입니다.
+
+이 프로젝트는 **read-only 검사 도구**입니다. Revit 요소를 생성·수정·삭제하는
+Transaction을 사용하지 않으며, 실행 중인 모델의 정보를 수집해 검토 항목을
+보고하는 데 목적이 있습니다.
 
 ## 주요 기능
 
-- Sheet QC
-- View QC
-- Parameter QC
-- pyRevit Output Report
-- CSV Export
-- Read-only model checking
-- Git-based version control
+- Sheet Number, Sheet Name, 배치 View 유무 검사
+- View 이름의 임시 키워드, Scale, View Template, Sheet 배치 상태 검사
+- JSON Rule Set에 정의된 카테고리별 필수 Parameter와 입력값 검사
+- 반복 Issue를 Review Group으로 묶은 pyRevit Output 요약
+- 전체 상세 항목을 보존하는 Full CSV
+- 그룹별 검토 항목을 정리하는 Summary CSV
+- `QC Summary`, `Review Groups`, `Key Samples`, `Full Detail` 시트로 구성된 Styled XLSX
+- Default, Interior, Company 및 사용자 정의 Rule Set 선택
+- 마지막으로 생성한 보고서 열기
 
-## v2.6 - Settings Preset Manager
+## 버튼 구성
 
-QC Settings는 `Excel Report`, `QC Rules`, `Rule Count` 구조로 정리됩니다.
-Excel Report는 보고용 Excel 생성에 필요한 Python과 Excel Library 상태를 관리하고,
-QC Rules는 Default QC, Interior QC, Company Template 또는 복사한 Rule Set을 다음
-Full/Quick QC 실행에 적용합니다. Rule Count는 현재 Rule Set의 Sheet, View,
-Parameter 규칙 수를 간단히 보여줍니다.
+| 버튼 | 역할 |
+| --- | --- |
+| **Run Full QC** | Sheet, View, Parameter 전체 QC를 실행합니다. |
+| **Quick QC** | Parameter QC를 제외하고 Sheet와 View를 빠르게 검사합니다. |
+| **QC Settings** | Styled XLSX용 Python 환경과 현재 JSON Rule Set을 관리합니다. |
+| **Open Last Report** | 마지막으로 정상 생성되어 기록된 XLSX 또는 CSV를 엽니다. |
+| **Help** | 버튼, Rule Set, Export Options 사용 방법을 pyRevit Output에 표시합니다. |
 
-개인 Python 경로와 `active_config`는 Git에서 제외되는 `qc_config_local.json`에
-저장됩니다. Rule Set JSON은 팀 기준으로 Git에 포함할 수 있으며, 전체 Python 경로,
-config/helper/debug 경로와 probe 정보는 기본 화면이 아닌 `Details`를 통해
-pyRevit Output에서 확인합니다.
+## 결과 확인과 Export
 
-새 환경에서는 `QC Settings → Set Python... → Test → Rule Set 선택 → Use This →
-Run QC` 순서로 초기 설정을 완료합니다. `Set Python...`은 선택한 `python.exe`를
-개인 local 설정에 즉시 저장하므로 별도의 Save 단계가 필요하지 않습니다.
+QC 결과는 실행 후 항상 pyRevit Output에 표시됩니다. 파일 저장이 필요하지 않으면
+Export Options에서 `Full CSV`, `Summary CSV`, `Styled XLSX Report`를 모두 해제하고
+검사만 실행할 수 있습니다.
 
-Export는 선택 사항입니다. Full CSV, Summary CSV, Styled XLSX Report를 모두 해제해도
-QC 검사는 실행되며 결과는 pyRevit Output에 표시됩니다. 저장하지 않은 실행은 기존
-마지막 보고서 경로를 변경하지 않습니다.
+- **Full CSV**: 개별 Issue 전체를 보존하는 상세 데이터
+- **Summary CSV**: Category, Item Type, QC Item, Issue Message 기준의 그룹 요약
+- **Styled XLSX Report**: 검토·공유·보고용으로 서식을 적용한 Excel 보고서
 
-## v2.5.2 - QC Settings UI
+Styled XLSX는 외부 Python과 `openpyxl`을 사용합니다. Python 환경이 준비되지 않아도
+Revit QC와 CSV Export는 사용할 수 있습니다.
 
-QC Settings에서 JSON을 직접 열거나 수정하지 않고 `Browse Python...`으로
-`python.exe`를 선택해 저장할 수 있습니다. 개인 경로는 Git에서 제외되는
-`config/qc_config_local.json`에만 기록하며, 기존 local 설정은 유지합니다.
-`Test XLSX Environment`에서 Python 실행, openpyxl 버전, helper와 debug log 상태를
-확인할 수 있습니다. Codex runtime cache 경로는 동작을 막지 않고 장기 사용 경고만
-표시합니다.
+## JSON Rule Set
 
-## v2.5.1 - Styled XLSX Report Polish
+검사 기준은 `YJH_RevitTools.extension/config`의 JSON Rule Set으로 관리합니다.
+`QC Settings`에서 Rule Set을 선택하고 `Use This`를 누르면 다음 Full/Quick QC부터
+해당 기준이 적용됩니다. 개인 Python 경로와 활성 Rule Set 정보는 Git에서 제외되는
+`qc_config_local.json`에 저장됩니다.
 
-Styled XLSX는 보고서형 `QC Summary`, 그룹 검토용 `Review Groups`, 대표 항목용
-`Key Samples`, 전체 데이터 검토용 `Full Detail` 시트로 구성됩니다. Summary에는
-KPI 카드와 상태·Severity 영역을 배치하고, 표 시트에는 고정 열 너비, 정렬,
-freeze pane, autofilter와 A4 가로 인쇄 설정을 적용합니다. QC 데이터와 CSV Export
-구조는 변경하지 않습니다.
+자세한 구조와 관리 기준은 [설정 가이드](docs/CONFIG.md)를 확인해 주세요.
 
-## v2.5 - Styled XLSX Report
+## 시작하기
 
-Styled XLSX Report는 `QC Summary`, `Review Groups`, `Key Samples`, `Full Detail`
-4개 시트로 구성된 보고·공유용 결과물입니다. 다크 네이비 Header, 오렌지 포인트,
-Severity 강조, zebra row, filter, freeze pane과 자동 열 너비를 적용합니다.
-CSV는 전체 원본 데이터와 호환성을 위한 교환용 형식으로 계속 유지합니다.
-IronPython은 QC 데이터를 임시 JSON으로 저장하고 외부 Python helper를 호출합니다.
-공통 `qc_config_default.json`은 `external_python_path`를 빈 값으로 유지합니다.
-사용자 PC 경로는 Git에서 제외되는 `config/qc_config_local.json`에 저장하며,
-local override가 없거나 비어 있으면 `py -3`, `python`, `python3` 순으로 확인합니다.
-설치 명령은 `py -3 -m pip install openpyxl`입니다. 외부 Python을 찾지 못해도
-XLSX만 skip하고 CSV와 QC는 정상 완료됩니다.
+1. [설치 가이드](docs/INSTALL.md)에 따라 저장소와 pyRevit extension을 연결합니다.
+2. Revit에서 pyRevit Reload 후 `Revit QC > QC Toolkit` 패널을 확인합니다.
+3. `QC Settings`에서 Python 환경과 Rule Set을 확인합니다.
+4. [사용 가이드](docs/USAGE.md)에 따라 Full QC 또는 Quick QC를 실행합니다.
 
-Styled XLSX 실행 기록은 `reports/xlsx_helper_debug.log`에 저장됩니다. QC Settings에서
-감지된 Python, openpyxl 버전, helper 경로와 마지막 debug log 위치를 확인할 수 있습니다.
+버전별 변경 내역은 [기존 Changelog](docs/changelog.md), 상세 동작 흐름은
+[Workflow](docs/workflow.md)에서 확인할 수 있습니다.
 
-`config/qc_config_local.json`을 만들고 JSON 이스케이프를 적용합니다.
+## 프로젝트 성격
 
-```json
-{
-  "external_python_path": "C:\\Python312\\python.exe"
-}
-```
+이 저장소는 Revit 기반 인테리어 실시설계 업무에서 반복되는 모델·도면 검토를
+표준화하는 BIM/DX 포트폴리오 프로젝트입니다. 단순 결과 화면보다 다음 실무 역량을
+보여주는 데 초점을 둡니다.
 
-설정 병합 순서는 `qc_config_default.json → qc_config_local.json override`입니다.
+- 도면과 모델의 정합성 검토 기준 구조화
+- Sheet/View/Parameter 검사 모듈 분리
+- 회사·프로젝트별 JSON Rule Set 운영
+- 원본 상세 데이터와 보고용 결과물의 분리
+- pyRevit 기반 실무 도구 배포와 로컬 설정 관리
 
-## v2.4 - Export Options
-
-Run Full QC와 Quick QC 실행 시 저장 폴더와 출력 형식을 먼저 선택합니다.
-Full CSV, Summary CSV, Styled XLSX Report를 체크박스로 선택할 수 있으며,
-Quick QC 기본값은 Full CSV OFF, Summary CSV ON, Styled XLSX ON입니다.
-선택한 폴더는 다음 실행을 위해 runtime 기록으로만 보관하고 Git에서는 제외합니다.
-CSV Export와 read-only QC 검사 기능은 그대로 유지합니다.
-
-## v2.3.1 - Toolkit Icons and Tooltips
-
-5개 Toolkit 버튼에 기능별 미니멀 아이콘과 간결한 tooltip을 적용했습니다.
-아이콘은 투명 배경의 64 x 64 PNG이며, 다크 네이비 선과 오렌지 포인트로
-포트폴리오 시각 체계를 통일했습니다. QC 검사와 Export 기능 로직은 변경하지 않았습니다.
-
-## v2.3 - QC Toolkit Buttons
-
-기존 단일 QC Report 버튼을 `Run Full QC`, `Quick QC`, `QC Settings`,
-`Open Last Report`, `Help`의 5개 버튼으로 분리했습니다. 공통 `lib`와 `config`는
-extension 루트에서 공유하며, Full QC와 Quick QC가 생성한 마지막 Summary CSV 경로는
-`reports/latest_report_path.txt`에 저장됩니다.
-
-## v2.2 - Maintainable Plugin Structure
-
-단일 `script.py`에 있던 수집, Sheet/View/Parameter 검사, 그룹화, CSV Export,
-pyRevit Output 로직을 `lib/` 모듈로 분리했습니다. 검사 기준과 화면 Sample 설정은
-`config/qc_config_default.json`에서 관리하며, `script.py`는 실행 순서를 연결하는
-read-only 진입점 역할만 담당합니다.
-
-## v2.1 - Compact Portfolio Report
-
-포트폴리오 캡처용 Compact Summary에 검사 수량, Review Item 수,
-Issue Group 수, QC Status와 CSV Export 구성을 한 화면에 표시합니다.
-화면의 그룹 Sample은 최대 3개, 항목당 25자로 제한하며 CSV 원본은 유지합니다.
-
-## v2.0 - Portfolio Ready Report
-
-포트폴리오 캡처용 pyRevit Output은 Total Review Items와 Issue Groups를 중심으로
-간결하게 표시합니다. 화면의 Sample Items와 긴 요소 이름만 축약하며,
-Full CSV와 Summary CSV에는 전체 데이터를 유지합니다.
-
-## v1.9 - Filtered Portfolio Report
-
-pyRevit Output은 반복 Issue를 그룹화하여 핵심 요약과 대표 Sample만 표시합니다.
-전체 상세 Issue는 Full CSV에 유지하고, 그룹 결과는 별도의 Summary CSV로 저장합니다.
-
-이 도구는 Revit 모델을 직접 수정하지 않는 읽기 전용 검토 도구입니다.
+이 도구의 결과는 검토를 지원하는 자료이며, 프로젝트 기준 충족 여부에 대한 최종
+판단과 모델 수정은 담당 실무자가 수행합니다.

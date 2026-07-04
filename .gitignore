@@ -45,12 +45,25 @@ screenshots/raw/
 
 # Local machine configuration
 YJH_RevitTools.extension/config/qc_config_local.json
+/config/qc_config_local.json
 
 # Locally duplicated QC rule sets
 YJH_RevitTools.extension/config/qc_config_custom_*.json
+/config/qc_config_custom_*.json
 
 # Runtime report history
 YJH_RevitTools.extension/reports/*
 !YJH_RevitTools.extension/reports/.gitkeep
 YJH_RevitTools.extension/reports/latest_report_path.txt
 YJH_RevitTools.extension/reports/latest_export_folder.txt
+/reports/*
+!/reports/.gitkeep
+/reports/latest_report_path.txt
+/reports/latest_export_folder.txt
+
+# Documentation images must remain trackable
+!docs/images/
+!docs/images/**/*.png
+!docs/images/**/*.jpg
+!docs/images/**/*.jpeg
+!docs/images/**/*.webp

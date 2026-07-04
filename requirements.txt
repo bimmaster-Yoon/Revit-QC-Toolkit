@@ -1,0 +1,2 @@
+# Styled XLSX Report helper
+openpyxl>=3.1,<4
