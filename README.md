@@ -1,3 +1,10 @@
+## Release
+
+Latest clean distribution release:
+
+- [Revit QC Toolkit v2.7.1](https://github.com/bimmaster-Yoon/Revit-QC-Toolkit/releases/tag/v2.7.1-clean-distribution)
+
+- 
 # Revit QC Toolkit
 
 Revit 2026 모델의 Sheet, View, Parameter 상태를 점검하고 결과를 pyRevit Output과
