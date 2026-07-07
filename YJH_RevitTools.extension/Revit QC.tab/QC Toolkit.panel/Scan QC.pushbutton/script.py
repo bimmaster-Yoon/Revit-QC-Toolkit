@@ -23,6 +23,7 @@ from scan_qc.collectors import collect_point_cloud_instances, collect_selected_w
 from scan_qc.dialog import request_scan_qc_options
 from scan_qc.reporting import render_scan_qc_summary
 from scan_qc.settings import load_scan_qc_settings
+from scan_qc.standards import check_scan_qc_standards
 
 
 doc = revit.doc
@@ -40,8 +41,11 @@ selected_options = request_scan_qc_options(
 if selected_options is None:
     script.exit()
 
+standards_check = check_scan_qc_standards(doc, scan_qc_settings)
+
 render_scan_qc_summary(
     script.get_output(),
     len(selected_walls),
-    selected_options
+    selected_options,
+    standards_check
 )
