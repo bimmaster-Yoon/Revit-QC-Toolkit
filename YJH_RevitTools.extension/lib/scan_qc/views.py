@@ -1,35 +1,21 @@
 # -*- coding: utf-8 -*-
 
 from Autodesk.Revit.DB import (
-    BoundingBoxXYZ,
     FilteredElementCollector,
     SubTransaction,
     Transaction,
     TransactionStatus,
-    Transform,
-    UnitTypeId,
-    UnitUtils,
     View,
-    ViewDuplicateOption,
-    ViewType,
-    XYZ
+    ViewDuplicateOption
 )
 from System import DateTime
 
 from scan_qc.settings import (
     get_base_view_names,
-    get_view_creation_options,
     get_view_template_names
 )
+from scan_qc.analysis_scope import PLAN_VIEW_TYPES
 from scan_qc.standards import find_3d_view, find_view_template
-
-
-PLAN_VIEW_TYPES = (
-    ViewType.FloorPlan,
-    ViewType.CeilingPlan,
-    ViewType.EngineeringPlan,
-    ViewType.AreaPlan
-)
 
 
 def _to_text(value):
@@ -150,7 +136,7 @@ def create_scan_qc_plan_view(
         )
         return result
 
-    timestamp = timestamp or DateTime.Now.ToString("yyyyMMdd_HHmmss")
+    timestamp = timestamp or DateTime.Now.ToString("yyMMdd_HHmmss")
     view_name = _get_unique_view_name(
         doc,
         u"SCAN_QC_PLAN_{0}".format(timestamp)
@@ -194,58 +180,6 @@ def create_scan_qc_plan_view(
     return result
 
 
-def _get_bounding_box_corners(bounding_box):
-    minimum = bounding_box.Min
-    maximum = bounding_box.Max
-    transform = bounding_box.Transform or Transform.Identity
-    corners = []
-
-    for x_value in (minimum.X, maximum.X):
-        for y_value in (minimum.Y, maximum.Y):
-            for z_value in (minimum.Z, maximum.Z):
-                corners.append(
-                    transform.OfPoint(XYZ(x_value, y_value, z_value))
-                )
-
-    return corners
-
-
-def _build_wall_section_box(selected_walls, margin_mm):
-    points = []
-    for wall in selected_walls:
-        try:
-            bounding_box = wall.get_BoundingBox(None)
-            if bounding_box is not None:
-                points.extend(_get_bounding_box_corners(bounding_box))
-        except Exception:
-            pass
-
-    if not points:
-        return None, u"Selected Walls did not provide usable bounding boxes."
-
-    try:
-        margin_internal = UnitUtils.ConvertToInternalUnits(
-            float(margin_mm),
-            UnitTypeId.Millimeters
-        )
-    except Exception as ex:
-        return None, u"Invalid section box margin: {0}".format(_to_text(ex))
-
-    section_box = BoundingBoxXYZ()
-    section_box.Transform = Transform.Identity
-    section_box.Min = XYZ(
-        min(point.X for point in points) - margin_internal,
-        min(point.Y for point in points) - margin_internal,
-        min(point.Z for point in points) - margin_internal
-    )
-    section_box.Max = XYZ(
-        max(point.X for point in points) + margin_internal,
-        max(point.Y for point in points) + margin_internal,
-        max(point.Z for point in points) + margin_internal
-    )
-    return section_box, u""
-
-
 def _apply_section_box(doc, view3d, section_box):
     subtransaction = SubTransaction(doc)
     subtransaction_started = False
@@ -272,15 +206,15 @@ def _apply_section_box(doc, view3d, section_box):
 
 def create_scan_qc_3d_view(
     doc,
-    selected_walls,
+    analysis_scope_result,
     base_view_name,
     template_name,
-    section_box_margin_mm,
     timestamp=None
 ):
-    """Duplicate the installed Scan QC base 3D View and optionally crop to Walls."""
+    """Duplicate the installed base 3D View and apply the resolved scope box."""
     result = _create_view_result(True, template_name)
-    result["section_box_requested"] = bool(selected_walls)
+    result["section_box_requested"] = True
+    result["section_box_error"] = analysis_scope_result["error"]
     base_view = find_3d_view(doc, base_view_name)
     if base_view is None:
         result["error"] = u"Base 3D View not found: {0}".format(base_view_name)
@@ -296,15 +230,9 @@ def create_scan_qc_3d_view(
         result["error"] = _to_text(ex)
         return result
 
-    section_box = None
-    if selected_walls:
-        section_box, section_box_error = _build_wall_section_box(
-            selected_walls,
-            section_box_margin_mm
-        )
-        result["section_box_error"] = section_box_error
+    section_box = analysis_scope_result["section_box"]
 
-    timestamp = timestamp or DateTime.Now.ToString("yyyyMMdd_HHmmss")
+    timestamp = timestamp or DateTime.Now.ToString("yyMMdd_HHmmss")
     view_name = _get_unique_view_name(
         doc,
         u"SCAN_QC_3D_{0}".format(timestamp)
@@ -327,6 +255,7 @@ def create_scan_qc_3d_view(
         result["template_applied"] = template_applied
         result["template_error"] = template_error
 
+        duplicated_view.IsSectionBoxActive = False
         if section_box is not None:
             section_box_applied, section_box_error = _apply_section_box(
                 doc,
@@ -335,8 +264,6 @@ def create_scan_qc_3d_view(
             )
             result["section_box_applied"] = section_box_applied
             result["section_box_error"] = section_box_error
-        else:
-            duplicated_view.IsSectionBoxActive = False
 
         status = transaction.Commit()
         transaction_started = False
@@ -362,15 +289,14 @@ def create_scan_qc_3d_view(
 def create_requested_scan_qc_views(
     doc,
     active_view,
-    selected_walls,
+    analysis_scope_result,
     selected_options,
     settings
 ):
     """Create only the Scan QC working views selected in the dialog."""
     template_names = get_view_template_names(settings)
     base_view_names = get_base_view_names(settings)
-    view_creation_options = get_view_creation_options(settings)
-    timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
+    timestamp = DateTime.Now.ToString("yyMMdd_HHmmss")
     plan_requested = selected_options.get("create_plan_view", False)
     view3d_requested = selected_options.get("create_3d_view", False)
 
@@ -387,16 +313,16 @@ def create_requested_scan_qc_views(
     if view3d_requested:
         view3d_result = create_scan_qc_3d_view(
             doc,
-            selected_walls,
+            analysis_scope_result,
             base_view_names["view3d"],
             template_names["view3d"],
-            view_creation_options["section_box_margin_mm"],
             timestamp
         )
 
     return {
-        "selected_wall_count": len(selected_walls),
-        "section_box_margin_mm": view_creation_options["section_box_margin_mm"],
+        "selected_wall_count": analysis_scope_result["selected_wall_count"],
+        "section_box_margin_mm": analysis_scope_result["section_box_margin_mm"],
+        "analysis_scope": analysis_scope_result,
         "plan": plan_result,
         "view3d": view3d_result
     }

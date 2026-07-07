@@ -231,26 +231,103 @@ def _section_box_status(view_creation_result):
     return u"Failed"
 
 
+def _format_mm(value):
+    if value is None:
+        return u"N/A"
+    try:
+        numeric_value = float(value)
+        if numeric_value.is_integer():
+            return u"{0}".format(int(numeric_value))
+        return u"{0:.1f}".format(numeric_value)
+    except (TypeError, ValueError):
+        return u"{0}".format(value)
+
+
+def _render_analysis_scope(output, analysis_scope_result):
+    is_selected_walls = (
+        analysis_scope_result["analysis_scope"] == u"selected_walls"
+    )
+    if analysis_scope_result["z_min_mm"] is None:
+        z_range_text = u"N/A"
+    else:
+        z_range_text = u"{0} to {1} mm".format(
+            _format_mm(analysis_scope_result["z_min_mm"]),
+            _format_mm(analysis_scope_result["z_max_mm"])
+        )
+
+    output.print_md("### E. Analysis Scope")
+    output.print_table(
+        table_data=[
+            [u"Analysis Scope", analysis_scope_result["analysis_scope_label"]],
+            [
+                u"Active Level",
+                analysis_scope_result["active_level_name"] or u"N/A"
+            ],
+            [
+                u"Active Level Elevation",
+                (
+                    u"{0} mm".format(
+                        _format_mm(
+                            analysis_scope_result["active_level_elevation_mm"]
+                        )
+                    )
+                    if analysis_scope_result["active_level_elevation_mm"] is not None
+                    else u"N/A"
+                )
+            ],
+            [
+                u"Selected Wall Count",
+                (
+                    analysis_scope_result["selected_wall_count"]
+                    if is_selected_walls
+                    else u"N/A"
+                )
+            ],
+            [u"Section Box Z Range", z_range_text],
+            [u"Section Box Source", analysis_scope_result["section_box_source"]],
+            [
+                u"Selected Walls Margin",
+                (
+                    u"{0} mm".format(
+                        _format_mm(analysis_scope_result["section_box_margin_mm"])
+                    )
+                    if is_selected_walls
+                    else u"N/A"
+                )
+            ]
+        ],
+        columns=[u"Scope Item", u"Result"]
+    )
+
+    for warning in analysis_scope_result["warnings"]:
+        output.print_md(u"> **Warning:** {0}".format(warning))
+    if analysis_scope_result["error"]:
+        output.print_md(
+            u"> **Warning:** Analysis Scope could not produce a Section Box: {0}"
+            .format(analysis_scope_result["error"])
+        )
+
+
 def _render_view_creation(output, view_creation_result):
     plan_result = view_creation_result["plan"]
     view3d_result = view_creation_result["view3d"]
-    output.print_md("### E. Scan QC Working Views")
+    analysis_scope_result = view_creation_result["analysis_scope"]
+    output.print_md("### F. Scan QC Working Views")
     output.print_table(
         table_data=[
             [u"QC Plan View", _view_name_or_status(plan_result)],
             [u"QC Plan Template Applied", _yes_no(plan_result["template_applied"])],
             [u"QC 3D View", _view_name_or_status(view3d_result)],
             [u"QC 3D Template Applied", _yes_no(view3d_result["template_applied"])],
-            [u"3D Section Box", _section_box_status(view_creation_result)],
-            [
-                u"Section Box Margin",
-                u"{0} mm".format(view_creation_result["section_box_margin_mm"])
-            ]
+            [u"3D Section Box", _section_box_status(view_creation_result)]
         ],
         columns=[u"View Setup Item", u"Result"]
     )
 
-    if view_creation_result["selected_wall_count"] == 0:
+    if (
+        analysis_scope_result["analysis_scope"] == u"selected_walls"
+        and view_creation_result["selected_wall_count"] == 0
+    ):
         output.print_md(
             "> **Warning:** No Wall elements were selected. Selected Walls are required "
             "for later Scan QC analysis, and no Wall-based 3D section box was created."
@@ -314,6 +391,7 @@ def render_scan_qc_summary(
         columns=[u"Item", u"Value"]
     )
     _render_standards_check(output, standards_result)
+    _render_analysis_scope(output, view_creation_result["analysis_scope"])
     _render_view_creation(output, view_creation_result)
     output.print_md(
         "> View setup phase only: no deviation calculation, point recoloring, markers, "
