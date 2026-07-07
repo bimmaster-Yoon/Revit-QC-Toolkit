@@ -364,6 +364,137 @@ def _render_view_creation(output, view_creation_result):
         )
 
 
+def _render_marker_preview(output, marker_preview_result):
+    if not hasattr(marker_preview_result, "get"):
+        marker_preview_result = {}
+    plan_preview = marker_preview_result.get("plan") or {}
+    view3d_preview = marker_preview_result.get("view3d") or {}
+    if not hasattr(plan_preview, "get"):
+        plan_preview = {}
+    if not hasattr(view3d_preview, "get"):
+        view3d_preview = {}
+
+    revision_cloud_count = plan_preview.get(
+        "revision_cloud_count",
+        marker_preview_result.get("revision_cloud_count", 0)
+    )
+    textnote_label_count = plan_preview.get(
+        "text_note_count",
+        marker_preview_result.get("textnote_label_count", 0)
+    )
+    textnote_leader_count = plan_preview.get(
+        "leader_count",
+        marker_preview_result.get("textnote_leader_count", 0)
+    )
+    preview_created = plan_preview.get(
+        "created",
+        marker_preview_result.get("preview_created", False)
+    )
+    preview_3d_status = marker_preview_result.get(
+        "3d_preview_status",
+        view3d_preview.get("display_mode", u"Disabled")
+    )
+
+    output.print_md("### G. Scan QC Marker Preview")
+    output.print_table(
+        table_data=[
+            [u"2D Plan Preview Requested", _yes_no(plan_preview.get("requested", False))],
+            [u"2D Plan Preview Created", _yes_no(preview_created)],
+            [
+                u"2D Target QC Plan View",
+                plan_preview.get("target_view_name", u"") or u"N/A"
+            ],
+            [u"2D Placement Source", plan_preview.get("placement_source", u"Unavailable")],
+            [u"2D Preview Revision", plan_preview.get("revision_description", u"N/A")],
+            [u"2D Preview Revision Created", _yes_no(plan_preview.get("revision_created", False))],
+            [u"Revision Cloud Count", revision_cloud_count],
+            [u"Center ID TextNote Count", textnote_label_count],
+            [u"TextNote Leader Count", textnote_leader_count],
+            [u"2D Review Count", plan_preview.get("review_count", 0)],
+            [u"2D Critical Count", plan_preview.get("critical_count", 0)],
+            [
+                u"2D Opaque Text Background",
+                _yes_no(plan_preview.get("opaque_text_background", False))
+            ],
+            [u"3D Preview", preview_3d_status or u"Disabled"],
+            [
+                u"3D Target QC View",
+                view3d_preview.get("target_view_name", u"") or u"N/A"
+            ]
+        ],
+        columns=[u"Marker Preview Item", u"Result"]
+    )
+
+    preview_id_mappings = plan_preview.get(
+        "preview_id_mappings",
+        marker_preview_result.get("preview_id_mappings", [])
+    ) or []
+    if not isinstance(preview_id_mappings, (list, tuple)):
+        preview_id_mappings = []
+    mapping_rows = []
+    for mapping in preview_id_mappings:
+        if not hasattr(mapping, "get"):
+            continue
+        mapping_rows.append([
+            mapping.get("id", u"N/A"),
+            mapping.get("label", u"N/A"),
+            _yes_no(mapping.get("revision_cloud_created", False)),
+            _yes_no(mapping.get("id_textnote_created", False))
+        ])
+    if mapping_rows:
+        output.print_md("#### Preview ID Mapping")
+        output.print_table(
+            table_data=mapping_rows,
+            columns=[
+                u"ID",
+                u"Preview Information",
+                u"Revision Cloud",
+                u"Center ID TextNote"
+            ]
+        )
+
+    plan_warnings = plan_preview.get("warnings") or []
+    if not isinstance(plan_warnings, (list, tuple)):
+        plan_warnings = [plan_warnings]
+    for warning in plan_warnings:
+        output.print_md(u"> **Warning:** 2D Plan Preview: {0}".format(warning))
+    if plan_preview.get("error"):
+        output.print_md(
+            u"> **Warning:** 2D Plan Preview was not created: {0}".format(
+                plan_preview.get("error")
+            )
+        )
+    view3d_warnings = view3d_preview.get("warnings") or []
+    if not isinstance(view3d_warnings, (list, tuple)):
+        view3d_warnings = [view3d_warnings]
+    for warning in view3d_warnings:
+        output.print_md(u"> **Warning:** 3D Preview: {0}".format(warning))
+    if view3d_preview.get("error"):
+        output.print_md(
+            u"> **Warning:** 3D Preview was not created: {0}".format(
+                view3d_preview.get("error")
+            )
+        )
+
+    preview_warnings = marker_preview_result.get("preview_warnings") or []
+    if not isinstance(preview_warnings, (list, tuple)):
+        preview_warnings = [preview_warnings]
+    for warning in preview_warnings:
+        if warning not in plan_warnings and warning not in view3d_warnings:
+            output.print_md(u"> **Warning:** Marker Preview: {0}".format(warning))
+
+    preview_errors = marker_preview_result.get("preview_errors") or []
+    if not isinstance(preview_errors, (list, tuple)):
+        preview_errors = [preview_errors]
+    for error in preview_errors:
+        if error != plan_preview.get("error") and error != view3d_preview.get("error"):
+            output.print_md(u"> **Warning:** Marker Preview: {0}".format(error))
+
+    output.print_md(
+        "> **Preview:** Marker preview only: no deviation calculation was performed."
+    )
+
+
 def render_scan_qc_summary(
     output,
     selected_wall_count,
@@ -393,7 +524,8 @@ def render_scan_qc_summary(
     _render_standards_check(output, standards_result)
     _render_analysis_scope(output, view_creation_result["analysis_scope"])
     _render_view_creation(output, view_creation_result)
+    _render_marker_preview(output, view_creation_result.get("marker_preview", {}))
     output.print_md(
-        "> View setup phase only: no deviation calculation, point recoloring, markers, "
-        "PDF creation, or CSV export was performed."
+        "> Preview phase only: no point recoloring, PDF creation, or CSV export was "
+        "performed."
     )

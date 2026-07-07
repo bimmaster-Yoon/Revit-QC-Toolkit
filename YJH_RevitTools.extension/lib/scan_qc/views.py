@@ -64,6 +64,7 @@ def _create_view_result(requested, template_name=u""):
     return {
         "requested": requested,
         "created": False,
+        "view_id": None,
         "view_name": u"",
         "template_name": template_name,
         "template_applied": False,
@@ -168,6 +169,7 @@ def create_scan_qc_plan_view(
             return result
 
         result["created"] = True
+        result["view_id"] = duplicated_view_id
         result["view_name"] = view_name
     except Exception as ex:
         result["error"] = _to_text(ex)
@@ -274,6 +276,7 @@ def create_scan_qc_3d_view(
             return result
 
         result["created"] = True
+        result["view_id"] = duplicated_view_id
         result["view_name"] = view_name
     except Exception as ex:
         result["error"] = _to_text(ex)

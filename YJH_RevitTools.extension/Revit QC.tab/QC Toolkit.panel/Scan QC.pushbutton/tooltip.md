@@ -10,5 +10,6 @@ Point Cloud 기반 Revit 모델 오차 검토
 - 기본 허용오차 기준 확인
 - QC Plan/3D 작업 View 및 보고서 옵션 선택
 
-현재 단계에서는 Standards 확인/설치와 선택한 QC 작업 View 생성을 수행합니다.
-편차 계산, Marker, PDF/CSV 생성, Point Cloud 색상 변경은 수행하지 않습니다.
+현재 단계에서는 Standards 확인/설치, QC 작업 View, 2D Revision Cloud/TextNote Preview를 생성합니다.
+3D Preview 표현은 비활성화되어 있습니다.
+실제 편차 계산, PDF/CSV 생성, Point Cloud 색상 변경은 수행하지 않습니다.
