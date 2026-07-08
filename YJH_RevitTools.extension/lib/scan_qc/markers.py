@@ -32,6 +32,7 @@ from scan_qc.analysis_scope import (
 from scan_qc.deviation import (
     STATUS_COORDINATE_MISMATCH,
     STATUS_CRITICAL,
+    STATUS_NO_RELIABLE_WALL_SURFACE_DATA,
     STATUS_NO_POINT_DATA,
     STATUS_REVIEW
 )
@@ -232,6 +233,23 @@ def _format_deviation_mm(value):
         return _to_text(value)
 
 
+def _get_preview_id(index):
+    """Return Excel-style alphabet IDs: A-Z, then AA, AB, AC..."""
+    letters = PREVIEW_ID_SEQUENCE
+    try:
+        number = int(index)
+    except Exception:
+        number = 0
+    if number < 0:
+        number = 0
+
+    result = u""
+    while number >= 0:
+        result = letters[number % len(letters)] + result
+        number = (number // len(letters)) - 1
+    return result
+
+
 def _project_marker_center(plan_view, marker_center):
     if marker_center is None:
         return None
@@ -242,9 +260,16 @@ def _project_marker_center(plan_view, marker_center):
 
 
 def _create_deviation_label(deviation_item):
-    return u"Wall {0} / P95 {1}mm / {2}".format(
+    metric = deviation_item.get("classification_metric", u"P75") or u"P75"
+    return u"Wall {0} / Face {1} {2}mm / {3}".format(
         deviation_item.get("wall_id", u"N/A"),
-        _format_deviation_mm(deviation_item.get("p95_deviation_mm")),
+        metric,
+        _format_deviation_mm(
+            deviation_item.get(
+                "classification_deviation_mm",
+                deviation_item.get("p75_deviation_mm")
+            )
+        ),
         deviation_item.get("status", u"N/A")
     )
 
@@ -265,12 +290,6 @@ def _get_deviation_marker_items(plan_view, deviation_result):
         status = deviation_item.get("status")
         if status not in (STATUS_REVIEW, STATUS_CRITICAL):
             continue
-        if len(marker_items) >= len(PREVIEW_ID_SEQUENCE):
-            warnings.append(
-                u"Only the first {0} Review/Critical deviation items were annotated."
-                .format(len(PREVIEW_ID_SEQUENCE))
-            )
-            break
 
         location = _project_marker_center(
             plan_view,
@@ -291,7 +310,7 @@ def _get_deviation_marker_items(plan_view, deviation_result):
             continue
 
         marker_item = {
-            "id": PREVIEW_ID_SEQUENCE[len(marker_items)],
+            "id": _get_preview_id(len(marker_items)),
             "location": location,
             "label": _create_deviation_label(deviation_item),
             "severity": status,
@@ -299,8 +318,37 @@ def _get_deviation_marker_items(plan_view, deviation_result):
             "avg_deviation_mm": deviation_item.get("avg_deviation_mm"),
             "max_deviation_mm": deviation_item.get("max_deviation_mm"),
             "p95_deviation_mm": deviation_item.get("p95_deviation_mm"),
+            "classification_deviation_mm": deviation_item.get(
+                "classification_deviation_mm"
+            ),
+            "classification_metric": deviation_item.get(
+                "classification_metric",
+                u"P75"
+            ),
+            "median_deviation_mm": deviation_item.get("median_deviation_mm"),
+            "p75_deviation_mm": deviation_item.get("p75_deviation_mm"),
+            "p90_deviation_mm": deviation_item.get("p90_deviation_mm"),
+            "raw_centerline_avg_mm": deviation_item.get("raw_centerline_avg_mm"),
+            "raw_centerline_max_mm": deviation_item.get("raw_centerline_max_mm"),
+            "raw_centerline_median_mm": deviation_item.get(
+                "raw_centerline_median_mm"
+            ),
+            "raw_centerline_p75_mm": deviation_item.get("raw_centerline_p75_mm"),
+            "raw_centerline_p90_mm": deviation_item.get("raw_centerline_p90_mm"),
+            "raw_centerline_p95_mm": deviation_item.get("raw_centerline_p95_mm"),
+            "corrected_avg_mm": deviation_item.get("corrected_avg_mm"),
+            "corrected_max_mm": deviation_item.get("corrected_max_mm"),
+            "corrected_median_mm": deviation_item.get("corrected_median_mm"),
+            "corrected_p75_mm": deviation_item.get("corrected_p75_mm"),
+            "corrected_p90_mm": deviation_item.get("corrected_p90_mm"),
+            "corrected_p95_mm": deviation_item.get("corrected_p95_mm"),
+            "wall_half_width_mm": deviation_item.get("wall_half_width_mm"),
             "status": status,
-            "point_count": deviation_item.get("point_count", 0)
+            "point_count": deviation_item.get("point_count", 0),
+            "candidate_point_count": deviation_item.get(
+                "candidate_point_count",
+                0
+            )
         }
         marker_items.append(marker_item)
 
@@ -852,6 +900,7 @@ def _create_plan_preview_result(requested):
         "critical_count": 0,
         "ok_count": 0,
         "no_point_data_count": 0,
+        "no_reliable_data_count": 0,
         "coordinate_mismatch_count": 0,
         "target_wall_count": 0,
         "processed_wall_count": 0,
@@ -861,6 +910,7 @@ def _create_plan_preview_result(requested):
         "sampling_failure_reason": u"",
         "calculation_note": u"",
         "no_point_data_details": [],
+        "no_reliable_data_details": [],
         "coordinate_mismatch_details": [],
         "coordinate_debug": {},
         "wall_deviation_results": [],
@@ -895,11 +945,40 @@ def _copy_wall_deviation_results(deviation_result):
         copied_rows.append({
             "wall_id": row.get("wall_id", u"N/A"),
             "point_count": row.get("point_count", 0),
+            "candidate_point_count": row.get("candidate_point_count", 0),
+            "candidate_point_count_before_outlier_filter": row.get(
+                "candidate_point_count_before_outlier_filter",
+                0
+            ),
             "avg_deviation_mm": row.get("avg_deviation_mm"),
             "max_deviation_mm": row.get("max_deviation_mm"),
             "p95_deviation_mm": row.get("p95_deviation_mm"),
+            "classification_deviation_mm": row.get("classification_deviation_mm"),
+            "classification_metric": row.get("classification_metric", u"P75"),
+            "median_deviation_mm": row.get("median_deviation_mm"),
+            "p75_deviation_mm": row.get("p75_deviation_mm"),
+            "p90_deviation_mm": row.get("p90_deviation_mm"),
+            "raw_centerline_avg_mm": row.get("raw_centerline_avg_mm"),
+            "raw_centerline_max_mm": row.get("raw_centerline_max_mm"),
+            "raw_centerline_median_mm": row.get("raw_centerline_median_mm"),
+            "raw_centerline_p75_mm": row.get("raw_centerline_p75_mm"),
+            "raw_centerline_p90_mm": row.get("raw_centerline_p90_mm"),
+            "raw_centerline_p95_mm": row.get("raw_centerline_p95_mm"),
+            "corrected_avg_mm": row.get("corrected_avg_mm"),
+            "corrected_max_mm": row.get("corrected_max_mm"),
+            "corrected_median_mm": row.get("corrected_median_mm"),
+            "corrected_p75_mm": row.get("corrected_p75_mm"),
+            "corrected_p90_mm": row.get("corrected_p90_mm"),
+            "corrected_p95_mm": row.get("corrected_p95_mm"),
+            "wall_type_width_mm": row.get("wall_type_width_mm"),
+            "wall_half_width_mm": row.get("wall_half_width_mm"),
+            "candidate_limit_mm": row.get("candidate_limit_mm"),
+            "rejected_outside_segment": row.get("rejected_outside_segment", 0),
+            "rejected_noise": row.get("rejected_noise", 0),
+            "rejected_extreme_noise": row.get("rejected_extreme_noise", 0),
             "status": row.get("status", u"N/A"),
             "message": row.get("message", u""),
+            "skip_reason": row.get("skip_reason", u""),
             "coordinate_mode": row.get("coordinate_mode", u"N/A"),
             "distance_sanity_check": row.get("distance_sanity_check", u"N/A"),
             "coordinate_mode_stats": row.get("coordinate_mode_stats", [])
@@ -953,6 +1032,10 @@ def create_plan_marker_preview(
         result["target_wall_count"] = deviation_result.get("target_wall_count", 0)
         result["processed_wall_count"] = deviation_result.get("processed_wall_count", 0)
         result["no_point_data_count"] = deviation_result.get("no_point_data_count", 0)
+        result["no_reliable_data_count"] = deviation_result.get(
+            "no_reliable_data_count",
+            0
+        )
         result["coordinate_mismatch_count"] = deviation_result.get(
             "coordinate_mismatch_count",
             0
@@ -966,6 +1049,7 @@ def create_plan_marker_preview(
             deviation_result
         )
         no_point_data_details = []
+        no_reliable_data_details = []
         coordinate_mismatch_details = []
         for deviation_item in deviation_result.get("results", []):
             if (
@@ -975,6 +1059,18 @@ def create_plan_marker_preview(
                 no_point_data_details.append({
                     "wall_id": deviation_item.get("wall_id", u"N/A"),
                     "message": deviation_item.get("message", u"No Point Data")
+                })
+            elif (
+                hasattr(deviation_item, "get")
+                and deviation_item.get("status")
+                == STATUS_NO_RELIABLE_WALL_SURFACE_DATA
+            ):
+                no_reliable_data_details.append({
+                    "wall_id": deviation_item.get("wall_id", u"N/A"),
+                    "message": deviation_item.get(
+                        "message",
+                        STATUS_NO_RELIABLE_WALL_SURFACE_DATA
+                    )
                 })
             elif (
                 hasattr(deviation_item, "get")
@@ -988,6 +1084,7 @@ def create_plan_marker_preview(
                     )
                 })
         result["no_point_data_details"] = no_point_data_details
+        result["no_reliable_data_details"] = no_reliable_data_details
         result["coordinate_mismatch_details"] = coordinate_mismatch_details
         for warning in deviation_result.get("warnings", []):
             result["warnings"].append(warning)
@@ -1046,7 +1143,7 @@ def create_plan_marker_preview(
                             else CRITICAL_LABEL
                         )
                         marker_items.append({
-                            "id": PREVIEW_ID_SEQUENCE[index],
+                            "id": _get_preview_id(index),
                             "location": location,
                             "label": label,
                             "severity": severity,
@@ -1083,7 +1180,7 @@ def create_plan_marker_preview(
                 severity = STATUS_REVIEW if index % 2 == 0 else STATUS_CRITICAL
                 label = REVIEW_LABEL if severity == STATUS_REVIEW else CRITICAL_LABEL
                 marker_items.append({
-                    "id": PREVIEW_ID_SEQUENCE[index],
+                    "id": _get_preview_id(index),
                     "location": location,
                     "label": label,
                     "severity": severity,
@@ -1178,8 +1275,37 @@ def create_plan_marker_preview(
                 "avg_deviation_mm": marker_item.get("avg_deviation_mm"),
                 "max_deviation_mm": marker_item.get("max_deviation_mm"),
                 "p95_deviation_mm": marker_item.get("p95_deviation_mm"),
+                "classification_deviation_mm": marker_item.get(
+                    "classification_deviation_mm"
+                ),
+                "classification_metric": marker_item.get(
+                    "classification_metric",
+                    u"P75"
+                ),
+                "median_deviation_mm": marker_item.get("median_deviation_mm"),
+                "p75_deviation_mm": marker_item.get("p75_deviation_mm"),
+                "p90_deviation_mm": marker_item.get("p90_deviation_mm"),
+                "raw_centerline_avg_mm": marker_item.get("raw_centerline_avg_mm"),
+                "raw_centerline_max_mm": marker_item.get("raw_centerline_max_mm"),
+                "raw_centerline_median_mm": marker_item.get(
+                    "raw_centerline_median_mm"
+                ),
+                "raw_centerline_p75_mm": marker_item.get("raw_centerline_p75_mm"),
+                "raw_centerline_p90_mm": marker_item.get("raw_centerline_p90_mm"),
+                "raw_centerline_p95_mm": marker_item.get("raw_centerline_p95_mm"),
+                "corrected_avg_mm": marker_item.get("corrected_avg_mm"),
+                "corrected_max_mm": marker_item.get("corrected_max_mm"),
+                "corrected_median_mm": marker_item.get("corrected_median_mm"),
+                "corrected_p75_mm": marker_item.get("corrected_p75_mm"),
+                "corrected_p90_mm": marker_item.get("corrected_p90_mm"),
+                "corrected_p95_mm": marker_item.get("corrected_p95_mm"),
+                "wall_half_width_mm": marker_item.get("wall_half_width_mm"),
                 "status": marker_item.get("status", u"N/A"),
                 "point_count": marker_item.get("point_count", 0),
+                "candidate_point_count": marker_item.get(
+                    "candidate_point_count",
+                    0
+                ),
                 "is_fallback_preview": marker_item.get("is_fallback_preview", False),
                 "revision_cloud_created": revision_cloud is not None,
                 "id_textnote_created": text_note is not None,

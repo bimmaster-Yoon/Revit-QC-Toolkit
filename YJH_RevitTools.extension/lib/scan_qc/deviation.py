@@ -45,6 +45,7 @@ STATUS_REVIEW = u"REVIEW"
 STATUS_CRITICAL = u"CRITICAL"
 STATUS_NO_POINT_DATA = u"No Point Data"
 STATUS_COORDINATE_MISMATCH = u"Coordinate Mismatch"
+STATUS_NO_RELIABLE_WALL_SURFACE_DATA = u"No Reliable Wall Surface Data"
 POINT_CLOUD_SAMPLING_UNAVAILABLE = (
     u"Point Cloud sampling API unavailable or not implemented"
 )
@@ -52,12 +53,16 @@ POINT_CLOUD_FILTER_FACTORY_FULL_NAME = (
     u"Autodesk.Revit.DB.PointClouds.PointCloudFilterFactory"
 )
 FT_TO_MM = 304.8
-SELECTED_WALL_MVP_LIMIT = 3
+SELECTED_WALL_MVP_LIMIT = 10
 MIN_AVERAGE_DISTANCE_FT = 0.05
 MAX_AVERAGE_DISTANCE_FT = 0.10
 MIN_POINTS_PER_WALL = 500
 MAX_POINTS_PER_WALL = 2000
 COORDINATE_MISMATCH_THRESHOLD_MM = 5000.0
+WALL_FACE_NOISE_MARGIN_MM = 300.0
+MIN_RELIABLE_CANDIDATE_POINTS = 20
+NOISE_OUTLIER_FLOOR_MM = 150.0
+CLASSIFICATION_PERCENTILE_LABEL = u"P75"
 
 
 def _to_text(value):
@@ -224,6 +229,7 @@ def _create_result(selected_options):
         "target_wall_count": 0,
         "processed_wall_count": 0,
         "no_point_data_count": 0,
+        "no_reliable_data_count": 0,
         "coordinate_mismatch_count": 0,
         "ok_count": 0,
         "review_count": 0,
@@ -412,6 +418,17 @@ def _get_wall_line_segment_for_calculation(wall):
         )
 
 
+def _get_wall_type_width_ft(wall):
+    try:
+        wall_type = wall.WallType
+        width = wall_type.Width
+        if width is not None and width > 0:
+            return float(width), u""
+    except Exception as ex:
+        return 0.0, u"WallType.Width could not be read: {0}".format(_to_text(ex))
+    return 0.0, u"WallType.Width was unavailable or zero."
+
+
 def _wall_marker_center(wall):
     start, end = _get_wall_location_segment(wall)
     if start is not None and end is not None:
@@ -444,9 +461,34 @@ def _create_no_point_result(wall, message):
         "max_deviation_mm": None,
         "p95_deviation_mm": None,
         "classification_deviation_mm": None,
+        "classification_metric": CLASSIFICATION_PERCENTILE_LABEL,
+        "median_deviation_mm": None,
+        "p75_deviation_mm": None,
+        "p90_deviation_mm": None,
+        "raw_centerline_avg_mm": None,
+        "raw_centerline_max_mm": None,
+        "raw_centerline_median_mm": None,
+        "raw_centerline_p75_mm": None,
+        "raw_centerline_p90_mm": None,
+        "raw_centerline_p95_mm": None,
+        "corrected_avg_mm": None,
+        "corrected_max_mm": None,
+        "corrected_median_mm": None,
+        "corrected_p75_mm": None,
+        "corrected_p90_mm": None,
+        "corrected_p95_mm": None,
+        "wall_type_width_mm": None,
+        "wall_half_width_mm": None,
+        "candidate_limit_mm": None,
         "point_count": 0,
+        "candidate_point_count": 0,
+        "candidate_point_count_before_outlier_filter": 0,
+        "rejected_outside_segment": 0,
+        "rejected_noise": 0,
+        "rejected_extreme_noise": 0,
         "marker_center": _wall_marker_center(wall),
         "message": message,
+        "skip_reason": message,
         "sampling_status": u"No Point Data",
         "coordinate_mode": u"N/A",
         "distance_sanity_check": u"N/A",
@@ -458,6 +500,7 @@ def _create_coordinate_mismatch_result(wall, message, coordinate_result):
     if not isinstance(coordinate_result, dict):
         coordinate_result = {}
     selected_stats = coordinate_result.get("selected_stats") or {}
+    classification_value = _get_classification_distance_mm(selected_stats)
     return {
         "wall": wall,
         "wall_id": get_element_id_value(wall.Id),
@@ -465,15 +508,106 @@ def _create_coordinate_mismatch_result(wall, message, coordinate_result):
         "avg_deviation_mm": selected_stats.get("avg_mm"),
         "max_deviation_mm": selected_stats.get("max_mm"),
         "p95_deviation_mm": selected_stats.get("p95_mm"),
-        "classification_deviation_mm": selected_stats.get("p95_mm"),
-        "point_count": selected_stats.get("point_count", 0),
+        "classification_deviation_mm": classification_value,
+        "classification_metric": CLASSIFICATION_PERCENTILE_LABEL,
+        "median_deviation_mm": selected_stats.get("median_mm"),
+        "p75_deviation_mm": selected_stats.get("p75_mm"),
+        "p90_deviation_mm": selected_stats.get("p90_mm"),
+        "raw_centerline_avg_mm": selected_stats.get("centerline_avg_mm"),
+        "raw_centerline_max_mm": selected_stats.get("centerline_max_mm"),
+        "raw_centerline_median_mm": selected_stats.get("centerline_median_mm"),
+        "raw_centerline_p75_mm": selected_stats.get("centerline_p75_mm"),
+        "raw_centerline_p90_mm": selected_stats.get("centerline_p90_mm"),
+        "raw_centerline_p95_mm": selected_stats.get("centerline_p95_mm"),
+        "corrected_avg_mm": selected_stats.get("avg_mm"),
+        "corrected_max_mm": selected_stats.get("max_mm"),
+        "corrected_median_mm": selected_stats.get("median_mm"),
+        "corrected_p75_mm": selected_stats.get("p75_mm"),
+        "corrected_p90_mm": selected_stats.get("p90_mm"),
+        "corrected_p95_mm": selected_stats.get("p95_mm"),
+        "wall_type_width_mm": coordinate_result.get("wall_type_width_mm"),
+        "wall_half_width_mm": coordinate_result.get("wall_half_width_mm"),
+        "candidate_limit_mm": coordinate_result.get("candidate_limit_mm"),
+        "point_count": selected_stats.get("sampled_point_count", 0),
+        "candidate_point_count": selected_stats.get("point_count", 0),
+        "candidate_point_count_before_outlier_filter": selected_stats.get(
+            "candidate_point_count_before_outlier_filter",
+            0
+        ),
+        "rejected_outside_segment": selected_stats.get(
+            "rejected_outside_segment",
+            0
+        ),
+        "rejected_noise": selected_stats.get("rejected_noise", 0),
+        "rejected_extreme_noise": selected_stats.get("rejected_extreme_noise", 0),
         "marker_center": _wall_marker_center(wall),
         "message": message,
+        "skip_reason": message,
         "sampling_status": u"Coordinate Mismatch",
         "coordinate_mode": coordinate_result.get("coordinate_mode", u"N/A"),
         "distance_sanity_check": coordinate_result.get(
             "distance_sanity_check",
             u"Coordinate Mismatch"
+        ),
+        "coordinate_mode_stats": coordinate_result.get("mode_stats", []),
+        "sample_debug": coordinate_result.get("sample_debug", {}),
+        "wall_endpoints": coordinate_result.get("wall_endpoints", u"N/A")
+    }
+
+
+def _create_no_reliable_result(wall, message, coordinate_result):
+    if not isinstance(coordinate_result, dict):
+        coordinate_result = {}
+    selected_stats = coordinate_result.get("selected_stats") or {}
+    return {
+        "wall": wall,
+        "wall_id": get_element_id_value(wall.Id),
+        "status": STATUS_NO_RELIABLE_WALL_SURFACE_DATA,
+        "avg_deviation_mm": selected_stats.get("avg_mm"),
+        "max_deviation_mm": selected_stats.get("max_mm"),
+        "p95_deviation_mm": selected_stats.get("p95_mm"),
+        "classification_deviation_mm": _get_classification_distance_mm(
+            selected_stats
+        ),
+        "classification_metric": CLASSIFICATION_PERCENTILE_LABEL,
+        "median_deviation_mm": selected_stats.get("median_mm"),
+        "p75_deviation_mm": selected_stats.get("p75_mm"),
+        "p90_deviation_mm": selected_stats.get("p90_mm"),
+        "raw_centerline_avg_mm": selected_stats.get("centerline_avg_mm"),
+        "raw_centerline_max_mm": selected_stats.get("centerline_max_mm"),
+        "raw_centerline_median_mm": selected_stats.get("centerline_median_mm"),
+        "raw_centerline_p75_mm": selected_stats.get("centerline_p75_mm"),
+        "raw_centerline_p90_mm": selected_stats.get("centerline_p90_mm"),
+        "raw_centerline_p95_mm": selected_stats.get("centerline_p95_mm"),
+        "corrected_avg_mm": selected_stats.get("avg_mm"),
+        "corrected_max_mm": selected_stats.get("max_mm"),
+        "corrected_median_mm": selected_stats.get("median_mm"),
+        "corrected_p75_mm": selected_stats.get("p75_mm"),
+        "corrected_p90_mm": selected_stats.get("p90_mm"),
+        "corrected_p95_mm": selected_stats.get("p95_mm"),
+        "wall_type_width_mm": coordinate_result.get("wall_type_width_mm"),
+        "wall_half_width_mm": coordinate_result.get("wall_half_width_mm"),
+        "candidate_limit_mm": coordinate_result.get("candidate_limit_mm"),
+        "point_count": selected_stats.get("sampled_point_count", 0),
+        "candidate_point_count": selected_stats.get("point_count", 0),
+        "candidate_point_count_before_outlier_filter": selected_stats.get(
+            "candidate_point_count_before_outlier_filter",
+            0
+        ),
+        "rejected_outside_segment": selected_stats.get(
+            "rejected_outside_segment",
+            0
+        ),
+        "rejected_noise": selected_stats.get("rejected_noise", 0),
+        "rejected_extreme_noise": selected_stats.get("rejected_extreme_noise", 0),
+        "marker_center": _wall_marker_center(wall),
+        "message": message,
+        "skip_reason": message,
+        "sampling_status": STATUS_NO_RELIABLE_WALL_SURFACE_DATA,
+        "coordinate_mode": coordinate_result.get("coordinate_mode", u"N/A"),
+        "distance_sanity_check": coordinate_result.get(
+            "distance_sanity_check",
+            u"N/A"
         ),
         "coordinate_mode_stats": coordinate_result.get("mode_stats", []),
         "sample_debug": coordinate_result.get("sample_debug", {}),
@@ -770,21 +904,17 @@ def _sample_wall_points(wall, point_cloud, sampling_context):
     return [], u"; ".join(errors) or u"No Point Data in Wall filter box."
 
 
-def _distance_point_to_segment_2d(point, start, end):
+def _distance_point_to_segment_2d_detail(point, start, end):
     dx = end.X - start.X
     dy = end.Y - start.Y
     length_squared = dx * dx + dy * dy
     if length_squared <= 0:
-        return None
+        return None, None
 
     t = (
         ((point.X - start.X) * dx + (point.Y - start.Y) * dy)
         / length_squared
     )
-    if t < 0.0:
-        t = 0.0
-    elif t > 1.0:
-        t = 1.0
 
     closest_x = start.X + t * dx
     closest_y = start.Y + t * dy
@@ -792,6 +922,23 @@ def _distance_point_to_segment_2d(point, start, end):
         (point.X - closest_x) * (point.X - closest_x)
         + (point.Y - closest_y) * (point.Y - closest_y)
     )
+    return distance, t
+
+
+def _distance_point_to_segment_2d(point, start, end):
+    distance, t = _distance_point_to_segment_2d_detail(point, start, end)
+    if distance is None:
+        return None
+    if t < 0.0:
+        return math.sqrt(
+            (point.X - start.X) * (point.X - start.X)
+            + (point.Y - start.Y) * (point.Y - start.Y)
+        )
+    if t > 1.0:
+        return math.sqrt(
+            (point.X - end.X) * (point.X - end.X)
+            + (point.Y - end.Y) * (point.Y - end.Y)
+        )
     return distance
 
 
@@ -816,16 +963,53 @@ def _get_points_for_coordinate_mode(raw_points, mode_name, sampling_context):
     return transformed_points
 
 
-def _calculate_distance_values_mm(points, start, end):
-    values_mm = []
+def _calculate_wall_face_distance_values_mm(
+    points,
+    start,
+    end,
+    wall_half_width_ft,
+    candidate_limit_ft
+):
+    centerline_values_mm = []
+    corrected_values_mm = []
+    sampled_point_count = 0
+    unreadable_distance_count = 0
+    rejected_outside_segment = 0
+    rejected_noise = 0
     for point in points or []:
-        distance_ft = _distance_point_to_segment_2d(point, start, end)
+        sampled_point_count += 1
+        distance_ft, projection_parameter = _distance_point_to_segment_2d_detail(
+            point,
+            start,
+            end
+        )
         if distance_ft is None:
+            unreadable_distance_count += 1
             continue
-        distance_mm = _internal_to_mm(distance_ft)
-        if distance_mm is not None:
-            values_mm.append(distance_mm)
-    return values_mm
+        if projection_parameter is None or projection_parameter < 0.0 or projection_parameter > 1.0:
+            rejected_outside_segment += 1
+            continue
+        if distance_ft > candidate_limit_ft:
+            rejected_noise += 1
+            continue
+
+        centerline_distance_mm = _internal_to_mm(distance_ft)
+        corrected_distance_mm = _internal_to_mm(
+            max(0.0, distance_ft - wall_half_width_ft)
+        )
+        if centerline_distance_mm is not None and corrected_distance_mm is not None:
+            centerline_values_mm.append(centerline_distance_mm)
+            corrected_values_mm.append(corrected_distance_mm)
+
+    return {
+        "centerline_values_mm": centerline_values_mm,
+        "corrected_values_mm": corrected_values_mm,
+        "sampled_point_count": sampled_point_count,
+        "unreadable_distance_count": unreadable_distance_count,
+        "candidate_point_count_before_outlier_filter": len(corrected_values_mm),
+        "rejected_outside_segment": rejected_outside_segment,
+        "rejected_noise": rejected_noise
+    }
 
 
 def _percentile_mm(values_mm, percentile):
@@ -840,33 +1024,195 @@ def _percentile_mm(values_mm, percentile):
     return sorted_values[index]
 
 
-def _summarize_distances(values_mm):
+def _filter_extreme_noise_values(values_mm):
+    """Remove high-end outliers without discarding a consistently shifted wall."""
     if not values_mm:
+        return [], 0, None
+    if len(values_mm) < 8:
+        return list(values_mm), 0, None
+
+    q1_mm = _percentile_mm(values_mm, 25.0)
+    q3_mm = _percentile_mm(values_mm, 75.0)
+    if q1_mm is None or q3_mm is None:
+        return list(values_mm), 0, None
+
+    iqr_mm = max(0.0, q3_mm - q1_mm)
+    upper_fence_mm = max(
+        q3_mm + (1.5 * iqr_mm),
+        NOISE_OUTLIER_FLOOR_MM
+    )
+    filtered_values = [value for value in values_mm if value <= upper_fence_mm]
+    if not filtered_values:
+        return list(values_mm), 0, upper_fence_mm
+    return (
+        filtered_values,
+        len(values_mm) - len(filtered_values),
+        upper_fence_mm
+    )
+
+
+def _average_mm(values_mm):
+    if not values_mm:
+        return None
+    return sum(values_mm) / float(len(values_mm))
+
+
+def _max_mm(values_mm):
+    if not values_mm:
+        return None
+    return max(values_mm)
+
+
+def _get_classification_distance_mm(stats):
+    if not hasattr(stats, "get"):
+        return None
+    return stats.get("p75_mm")
+
+
+def _get_wall_surface_reliability_warning(stats):
+    if not hasattr(stats, "get"):
+        return u"No distance statistics were available."
+
+    candidate_count = int(stats.get("point_count") or 0)
+    sampled_count = int(stats.get("sampled_point_count") or 0)
+    if candidate_count < MIN_RELIABLE_CANDIDATE_POINTS:
+        return (
+            u"No Reliable Wall Surface Data: only {0} candidate Wall-surface "
+            u"points remained after projection, distance, and outlier filters "
+            u"({1} sampled points). Minimum required: {2}."
+        ).format(candidate_count, sampled_count, MIN_RELIABLE_CANDIDATE_POINTS)
+
+    before_filter_count = int(
+        stats.get("candidate_point_count_before_outlier_filter") or 0
+    )
+    if before_filter_count > 0:
+        minimum_stable_count = max(
+            MIN_RELIABLE_CANDIDATE_POINTS,
+            int(math.ceil(before_filter_count * 0.25))
+        )
+        if candidate_count < minimum_stable_count:
+            return (
+                u"No Reliable Wall Surface Data: candidate distribution was "
+                u"unstable after extreme-noise filtering ({0}/{1} candidates "
+                u"kept)."
+            ).format(candidate_count, before_filter_count)
+
+    return u""
+
+
+def _summarize_wall_face_distances(distance_values):
+    if not isinstance(distance_values, dict):
+        distance_values = {}
+    corrected_values_before_filter_mm = (
+        distance_values.get("corrected_values_mm") or []
+    )
+    corrected_values_mm, rejected_extreme_noise, outlier_fence_mm = (
+        _filter_extreme_noise_values(corrected_values_before_filter_mm)
+    )
+    centerline_values_mm = distance_values.get("centerline_values_mm") or []
+    if not corrected_values_mm:
         return {
             "point_count": 0,
+            "sampled_point_count": distance_values.get("sampled_point_count", 0),
+            "candidate_point_count_before_outlier_filter": distance_values.get(
+                "candidate_point_count_before_outlier_filter",
+                0
+            ),
             "avg_mm": None,
+            "median_mm": None,
+            "p75_mm": None,
+            "p90_mm": None,
             "p95_mm": None,
-            "max_mm": None
+            "max_mm": None,
+            "centerline_avg_mm": None,
+            "centerline_median_mm": None,
+            "centerline_p75_mm": None,
+            "centerline_p90_mm": None,
+            "centerline_p95_mm": None,
+            "centerline_max_mm": None,
+            "unreadable_distance_count": distance_values.get(
+                "unreadable_distance_count",
+                0
+            ),
+            "rejected_outside_segment": distance_values.get(
+                "rejected_outside_segment",
+                0
+            ),
+            "rejected_noise": distance_values.get("rejected_noise", 0),
+            "rejected_extreme_noise": rejected_extreme_noise,
+            "outlier_fence_mm": outlier_fence_mm
         }
     return {
-        "point_count": len(values_mm),
-        "avg_mm": sum(values_mm) / float(len(values_mm)),
-        "p95_mm": _percentile_mm(values_mm, 95.0),
-        "max_mm": max(values_mm)
+        "point_count": len(corrected_values_mm),
+        "sampled_point_count": distance_values.get("sampled_point_count", 0),
+        "candidate_point_count_before_outlier_filter": distance_values.get(
+            "candidate_point_count_before_outlier_filter",
+            len(corrected_values_before_filter_mm)
+        ),
+        "avg_mm": _average_mm(corrected_values_mm),
+        "median_mm": _percentile_mm(corrected_values_mm, 50.0),
+        "p75_mm": _percentile_mm(corrected_values_mm, 75.0),
+        "p90_mm": _percentile_mm(corrected_values_mm, 90.0),
+        "p95_mm": _percentile_mm(corrected_values_mm, 95.0),
+        "max_mm": _max_mm(corrected_values_mm),
+        "centerline_avg_mm": _average_mm(centerline_values_mm),
+        "centerline_median_mm": _percentile_mm(centerline_values_mm, 50.0),
+        "centerline_p75_mm": _percentile_mm(centerline_values_mm, 75.0),
+        "centerline_p90_mm": _percentile_mm(centerline_values_mm, 90.0),
+        "centerline_p95_mm": _percentile_mm(centerline_values_mm, 95.0),
+        "centerline_max_mm": _max_mm(centerline_values_mm),
+        "unreadable_distance_count": distance_values.get(
+            "unreadable_distance_count",
+            0
+        ),
+        "rejected_outside_segment": distance_values.get(
+            "rejected_outside_segment",
+            0
+        ),
+        "rejected_noise": distance_values.get("rejected_noise", 0),
+        "rejected_extreme_noise": rejected_extreme_noise,
+        "outlier_fence_mm": outlier_fence_mm
     }
 
 
 def _format_distance_triplet(stats):
     if not stats or not hasattr(stats, "get") or not stats.get("point_count"):
         return u"N/A"
-    return u"Avg {0:.1f} / P95 {1:.1f} / Max {2:.1f} mm".format(
+    corrected_text = (
+        u"Face Avg {0:.1f} / P75 {1:.1f} / P90 {2:.1f} / "
+        u"P95 {3:.1f} / Max {4:.1f} mm"
+    ).format(
         stats.get("avg_mm", 0.0),
+        stats.get("p75_mm", 0.0),
+        stats.get("p90_mm", 0.0),
         stats.get("p95_mm", 0.0),
         stats.get("max_mm", 0.0)
     )
+    centerline_text = (
+        u"Centerline Avg {0:.1f} / P90 {1:.1f} / P95 {2:.1f} / "
+        u"Max {3:.1f} mm"
+    ).format(
+        stats.get("centerline_avg_mm", 0.0),
+        stats.get("centerline_p90_mm", 0.0),
+        stats.get("centerline_p95_mm", 0.0),
+        stats.get("centerline_max_mm", 0.0)
+    )
+    return u"{0} | {1} | Candidates {2}/{3}".format(
+        corrected_text,
+        centerline_text,
+        stats.get("point_count", 0),
+        stats.get("sampled_point_count", 0)
+    )
 
 
-def _build_coordinate_mode_stats(raw_points, start, end, sampling_context):
+def _build_coordinate_mode_stats(
+    raw_points,
+    start,
+    end,
+    wall_half_width_ft,
+    candidate_limit_ft,
+    sampling_context
+):
     mode_stats = []
     for mode_name in (u"raw", u"transform", u"total_transform"):
         mode_points = _get_points_for_coordinate_mode(
@@ -874,8 +1220,14 @@ def _build_coordinate_mode_stats(raw_points, start, end, sampling_context):
             mode_name,
             sampling_context
         )
-        distances_mm = _calculate_distance_values_mm(mode_points, start, end)
-        stats = _summarize_distances(distances_mm)
+        distance_values = _calculate_wall_face_distance_values_mm(
+            mode_points,
+            start,
+            end,
+            wall_half_width_ft,
+            candidate_limit_ft
+        )
+        stats = _summarize_wall_face_distances(distance_values)
         stats["mode"] = mode_name
         stats["summary"] = _format_distance_triplet(stats)
         mode_stats.append(stats)
@@ -887,8 +1239,8 @@ def _select_coordinate_mode(mode_stats):
     for stats in mode_stats or []:
         if not hasattr(stats, "get"):
             continue
-        p95_mm = stats.get("p95_mm")
-        if p95_mm is None or not stats.get("point_count"):
+        classification_mm = _get_classification_distance_mm(stats)
+        if classification_mm is None or not stats.get("point_count"):
             continue
         candidates.append(stats)
     if not candidates:
@@ -896,11 +1248,21 @@ def _select_coordinate_mode(mode_stats):
 
     reasonable_candidates = [
         stats for stats in candidates
-        if stats.get("p95_mm") < COORDINATE_MISMATCH_THRESHOLD_MM
+        if _get_classification_distance_mm(stats) < COORDINATE_MISMATCH_THRESHOLD_MM
     ]
+    reliable_candidates = [
+        stats for stats in reasonable_candidates
+        if int(stats.get("point_count") or 0) >= MIN_RELIABLE_CANDIDATE_POINTS
+    ]
+    sort_key = lambda item: (
+        _get_classification_distance_mm(item),
+        -int(item.get("point_count") or 0)
+    )
+    if reliable_candidates:
+        return sorted(reliable_candidates, key=sort_key)[0]
     if reasonable_candidates:
-        return sorted(reasonable_candidates, key=lambda item: item["p95_mm"])[0]
-    return sorted(candidates, key=lambda item: item["p95_mm"])[0]
+        return sorted(reasonable_candidates, key=sort_key)[0]
+    return sorted(candidates, key=sort_key)[0]
 
 
 def _get_sample_debug(raw_points, sampling_context, selected_mode):
@@ -932,11 +1294,20 @@ def _get_sample_debug(raw_points, sampling_context, selected_mode):
     }
 
 
-def _evaluate_coordinate_modes(raw_points, start, end, sampling_context):
+def _evaluate_coordinate_modes(
+    raw_points,
+    start,
+    end,
+    wall_half_width_ft,
+    candidate_limit_ft,
+    sampling_context
+):
     mode_stats = _build_coordinate_mode_stats(
         raw_points,
         start,
         end,
+        wall_half_width_ft,
+        candidate_limit_ft,
         sampling_context
     )
     selected_stats = _select_coordinate_mode(mode_stats)
@@ -950,14 +1321,21 @@ def _evaluate_coordinate_modes(raw_points, start, end, sampling_context):
         }
 
     selected_mode = selected_stats.get("mode", u"raw")
-    p95_mm = selected_stats.get("p95_mm")
-    if p95_mm is not None and p95_mm < COORDINATE_MISMATCH_THRESHOLD_MM:
+    classification_mm = _get_classification_distance_mm(selected_stats)
+    if (
+        classification_mm is not None
+        and classification_mm < COORDINATE_MISMATCH_THRESHOLD_MM
+    ):
         sanity = u"OK"
     else:
         sanity = (
-            u"Coordinate Mismatch: best P95 distance is {0:.1f} mm, above "
-            u"{1:.0f} mm sanity threshold."
-        ).format(p95_mm or 0.0, COORDINATE_MISMATCH_THRESHOLD_MM)
+            u"Coordinate Mismatch: best {0} distance is {1:.1f} mm, above "
+            u"{2:.0f} mm sanity threshold."
+        ).format(
+            CLASSIFICATION_PERCENTILE_LABEL,
+            classification_mm or 0.0,
+            COORDINATE_MISMATCH_THRESHOLD_MM
+        )
 
     return {
         "coordinate_mode": selected_mode,
@@ -972,12 +1350,12 @@ def _evaluate_coordinate_modes(raw_points, start, end, sampling_context):
     }
 
 
-def _classify_deviation(p95_deviation_mm, tolerance):
-    if p95_deviation_mm is None:
+def _classify_deviation(classification_deviation_mm, tolerance):
+    if classification_deviation_mm is None:
         return STATUS_NO_POINT_DATA
-    if p95_deviation_mm <= tolerance["ok_max"]:
+    if classification_deviation_mm <= tolerance["ok_max"]:
         return STATUS_OK
-    if p95_deviation_mm <= tolerance["review_max"]:
+    if classification_deviation_mm <= tolerance["review_max"]:
         return STATUS_REVIEW
     return STATUS_CRITICAL
 
@@ -1001,28 +1379,49 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
             sampling_error or u"No Point Data in Wall filter box."
         )
 
+    wall_type_width_ft, width_warning = _get_wall_type_width_ft(wall)
+    wall_half_width_ft = wall_type_width_ft / 2.0 if wall_type_width_ft > 0 else 0.0
+    candidate_limit_ft = wall_half_width_ft + _mm_to_internal(
+        WALL_FACE_NOISE_MARGIN_MM
+    )
+
     coordinate_result = _evaluate_coordinate_modes(
         raw_points,
         start,
         end,
+        wall_half_width_ft,
+        candidate_limit_ft,
         sampling_context
     )
     coordinate_result["wall_endpoints"] = u"{0} -> {1}".format(
         _format_xyz(start),
         _format_xyz(end)
     )
+    coordinate_result["wall_type_width_mm"] = _internal_to_mm(wall_type_width_ft)
+    coordinate_result["wall_half_width_mm"] = _internal_to_mm(wall_half_width_ft)
+    coordinate_result["candidate_limit_mm"] = _internal_to_mm(candidate_limit_ft)
+    coordinate_result["wall_width_warning"] = width_warning
     selected_stats = coordinate_result.get("selected_stats") or {}
     if not selected_stats.get("point_count"):
-        return _create_no_point_result(
+        return _create_no_reliable_result(
             wall,
             u"Point Cloud samples were returned, but no readable 2D distances "
-            u"could be calculated."
+            u"remained after Wall projection and candidate filters.",
+            coordinate_result
         )
 
-    p95_deviation_mm = selected_stats.get("p95_mm")
+    reliability_warning = _get_wall_surface_reliability_warning(selected_stats)
+    if reliability_warning:
+        return _create_no_reliable_result(
+            wall,
+            reliability_warning,
+            coordinate_result
+        )
+
+    classification_deviation_mm = _get_classification_distance_mm(selected_stats)
     if (
-        p95_deviation_mm is None
-        or p95_deviation_mm >= COORDINATE_MISMATCH_THRESHOLD_MM
+        classification_deviation_mm is None
+        or classification_deviation_mm >= COORDINATE_MISMATCH_THRESHOLD_MM
     ):
         return _create_coordinate_mismatch_result(
             wall,
@@ -1035,7 +1434,7 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
 
     avg_deviation_mm = selected_stats.get("avg_mm")
     max_deviation_mm = selected_stats.get("max_mm")
-    status = _classify_deviation(p95_deviation_mm, tolerance)
+    status = _classify_deviation(classification_deviation_mm, tolerance)
 
     return {
         "wall": wall,
@@ -1043,11 +1442,42 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
         "status": status,
         "avg_deviation_mm": avg_deviation_mm,
         "max_deviation_mm": max_deviation_mm,
-        "p95_deviation_mm": p95_deviation_mm,
-        "classification_deviation_mm": p95_deviation_mm,
-        "point_count": selected_stats.get("point_count", 0),
+        "p95_deviation_mm": selected_stats.get("p95_mm"),
+        "classification_deviation_mm": classification_deviation_mm,
+        "classification_metric": CLASSIFICATION_PERCENTILE_LABEL,
+        "median_deviation_mm": selected_stats.get("median_mm"),
+        "p75_deviation_mm": selected_stats.get("p75_mm"),
+        "p90_deviation_mm": selected_stats.get("p90_mm"),
+        "raw_centerline_avg_mm": selected_stats.get("centerline_avg_mm"),
+        "raw_centerline_max_mm": selected_stats.get("centerline_max_mm"),
+        "raw_centerline_median_mm": selected_stats.get("centerline_median_mm"),
+        "raw_centerline_p75_mm": selected_stats.get("centerline_p75_mm"),
+        "raw_centerline_p90_mm": selected_stats.get("centerline_p90_mm"),
+        "raw_centerline_p95_mm": selected_stats.get("centerline_p95_mm"),
+        "corrected_avg_mm": selected_stats.get("avg_mm"),
+        "corrected_max_mm": selected_stats.get("max_mm"),
+        "corrected_median_mm": selected_stats.get("median_mm"),
+        "corrected_p75_mm": selected_stats.get("p75_mm"),
+        "corrected_p90_mm": selected_stats.get("p90_mm"),
+        "corrected_p95_mm": selected_stats.get("p95_mm"),
+        "wall_type_width_mm": coordinate_result.get("wall_type_width_mm"),
+        "wall_half_width_mm": coordinate_result.get("wall_half_width_mm"),
+        "candidate_limit_mm": coordinate_result.get("candidate_limit_mm"),
+        "point_count": selected_stats.get("sampled_point_count", 0),
+        "candidate_point_count": selected_stats.get("point_count", 0),
+        "candidate_point_count_before_outlier_filter": selected_stats.get(
+            "candidate_point_count_before_outlier_filter",
+            0
+        ),
+        "rejected_outside_segment": selected_stats.get(
+            "rejected_outside_segment",
+            0
+        ),
+        "rejected_noise": selected_stats.get("rejected_noise", 0),
+        "rejected_extreme_noise": selected_stats.get("rejected_extreme_noise", 0),
         "marker_center": _wall_marker_center(wall),
         "message": u"",
+        "skip_reason": u"",
         "sampling_status": u"Sampled",
         "coordinate_mode": coordinate_result.get("coordinate_mode", u"N/A"),
         "distance_sanity_check": coordinate_result.get(
@@ -1056,7 +1486,8 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
         ),
         "coordinate_mode_stats": coordinate_result.get("mode_stats", []),
         "sample_debug": coordinate_result.get("sample_debug", {}),
-        "wall_endpoints": coordinate_result.get("wall_endpoints", u"N/A")
+        "wall_endpoints": coordinate_result.get("wall_endpoints", u"N/A"),
+        "wall_width_warning": coordinate_result.get("wall_width_warning", u"")
     }
 
 
@@ -1122,6 +1553,8 @@ def _append_count(result, wall_result):
         result["critical_count"] += 1
     elif status == STATUS_NO_POINT_DATA:
         result["no_point_data_count"] += 1
+    elif status == STATUS_NO_RELIABLE_WALL_SURFACE_DATA:
+        result["no_reliable_data_count"] += 1
     elif status == STATUS_COORDINATE_MISMATCH:
         result["coordinate_mismatch_count"] += 1
 
@@ -1129,7 +1562,9 @@ def _append_count(result, wall_result):
 def _update_sampling_summary(result):
     sampled_count = 0
     mismatch_count = 0
+    no_reliable_count = 0
     no_point_messages = []
+    no_reliable_messages = []
     for row in result.get("results", []):
         if not hasattr(row, "get"):
             continue
@@ -1138,15 +1573,25 @@ def _update_sampling_summary(result):
             message = row.get("message")
             if message:
                 no_point_messages.append(message)
+        elif status == STATUS_NO_RELIABLE_WALL_SURFACE_DATA:
+            no_reliable_count += 1
+            message = row.get("message")
+            if message:
+                no_reliable_messages.append(message)
         elif status == STATUS_COORDINATE_MISMATCH:
             mismatch_count += 1
         else:
             sampled_count += 1
 
-    if sampled_count > 0 and (result["no_point_data_count"] > 0 or mismatch_count > 0):
+    if sampled_count > 0 and (
+        result["no_point_data_count"] > 0
+        or mismatch_count > 0
+        or no_reliable_count > 0
+    ):
         result["point_cloud_sampling_status"] = u"Partial"
         result["sampling_failure_reason"] = (
-            u"Some Walls had no point data or coordinate mismatch."
+            u"Some Walls had no point data, no reliable wall-surface data, "
+            u"or coordinate mismatch."
         )
     elif sampled_count > 0:
         result["point_cloud_sampling_status"] = u"Sampled"
@@ -1156,6 +1601,15 @@ def _update_sampling_summary(result):
         result["sampling_failure_reason"] = (
             u"Point Cloud samples were returned, but all sampled Walls exceeded "
             u"the coordinate sanity threshold."
+        )
+    elif no_reliable_count > 0:
+        result["point_cloud_sampling_status"] = (
+            STATUS_NO_RELIABLE_WALL_SURFACE_DATA
+        )
+        result["sampling_failure_reason"] = (
+            no_reliable_messages[0]
+            if no_reliable_messages
+            else u"Candidate point distribution was not reliable enough."
         )
     elif no_point_messages:
         first_message = no_point_messages[0]
@@ -1292,15 +1746,23 @@ def calculate_wall_deviations(
     result["calculation_note"] = (
         u"Selected Walls MVP used {0} ({1}) and "
         u"PointCloudInstance.GetPoints(filter, averageDistance={2:.3f} ft, "
-        u"numPoints={3}). Distances are 2D to Wall LocationCurve centerline. "
+        u"numPoints={3}). Raw distances are 2D to Wall LocationCurve centerline; "
+        u"reported deviations subtract WallType.Width / 2 and use wall-face "
+        u"corrected values. Candidate points must project within the Wall line "
+        u"segment and be within wall half width + {4:.0f} mm. "
+        u"Extreme high-end candidate outliers are filtered before reporting. "
         u"Raw, GetTransform, and GetTotalTransform point coordinates were "
-        u"compared; the lowest reasonable P95 mode was used. P95 >= {4:.0f} mm "
-        u"is treated as Coordinate Mismatch."
+        u"compared; the lowest reliable corrected {5} mode was used. "
+        u"Review/Critical status uses corrected {5}; P90/P95/Max are output "
+        u"reference values only. Corrected {5} >= {6:.0f} mm is treated as "
+        u"Coordinate Mismatch."
     ).format(
         sampling_context.get("factory_type_name"),
         sampling_context.get("factory_resolution"),
         sampling_context.get("average_distance_ft"),
         sampling_context.get("max_points"),
+        WALL_FACE_NOISE_MARGIN_MM,
+        CLASSIFICATION_PERCENTILE_LABEL,
         COORDINATE_MISMATCH_THRESHOLD_MM
     )
 

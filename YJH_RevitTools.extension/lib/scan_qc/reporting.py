@@ -274,8 +274,10 @@ def _format_mode_stat(stats):
         return summary
     if not stats.get("point_count"):
         return u"N/A"
-    return u"Avg {0} / P95 {1} / Max {2} mm".format(
+    return u"Avg {0} / P75 {1} / P90 {2} / P95 {3} / Max {4} mm".format(
         _format_mm(stats.get("avg_mm")),
+        _format_mm(stats.get("p75_mm")),
+        _format_mm(stats.get("p90_mm")),
         _format_mm(stats.get("p95_mm")),
         _format_mm(stats.get("max_mm"))
     )
@@ -506,6 +508,10 @@ def _render_marker_preview(output, marker_preview_result):
                 plan_preview.get("coordinate_mismatch_count", 0)
             ],
             [
+                u"No Reliable Wall Surface Data Count",
+                plan_preview.get("no_reliable_data_count", 0)
+            ],
+            [
                 u"Coordinate Mode Used",
                 coordinate_debug.get("coordinate_mode_used", u"N/A")
             ],
@@ -674,7 +680,7 @@ def _render_marker_preview(output, marker_preview_result):
                         )
                     ]
                 ],
-                columns=[u"Coordinate Mode", u"Avg / P95 / Max"]
+                columns=[u"Coordinate Mode", u"Avg / P75 / P90 / P95 / Max"]
             )
 
     preview_id_mappings = plan_preview.get(
@@ -699,10 +705,14 @@ def _render_marker_preview(output, marker_preview_result):
                 mapping.get("id", u"N/A"),
                 u"Wall {0}".format(mapping.get("wall_id", u"N/A")),
                 _format_mm_with_unit(mapping.get("avg_deviation_mm")),
-                _format_mm_with_unit(mapping.get("max_deviation_mm")),
+                _format_mm_with_unit(mapping.get("p75_deviation_mm")),
+                _format_mm_with_unit(mapping.get("p90_deviation_mm")),
                 _format_mm_with_unit(mapping.get("p95_deviation_mm")),
+                _format_mm_with_unit(mapping.get("max_deviation_mm")),
+                mapping.get("classification_metric", u"P75"),
                 mapping.get("status", mapping.get("severity", u"N/A")),
                 mapping.get("point_count", 0),
+                mapping.get("candidate_point_count", 0),
                 _yes_no(mapping.get("revision_cloud_created", False)),
                 _yes_no(mapping.get("id_textnote_created", False))
             ])
@@ -725,11 +735,15 @@ def _render_marker_preview(output, marker_preview_result):
                 columns=[
                     u"ID",
                     u"Wall",
-                    u"Avg",
-                    u"Max",
-                    u"P95",
+                    u"Face Avg",
+                    u"Face P75",
+                    u"Face P90",
+                    u"Face P95",
+                    u"Face Max",
+                    u"Status Metric",
                     u"Status",
                     u"Sample Points",
+                    u"Candidate Points",
                     u"Revision Cloud",
                     u"Center ID TextNote"
                 ]
@@ -755,13 +769,22 @@ def _render_marker_preview(output, marker_preview_result):
             wall_result_rows.append([
                 u"Wall {0}".format(wall_id),
                 item.get("point_count", 0),
-                _format_mm_with_unit(item.get("avg_deviation_mm")),
-                _format_mm_with_unit(item.get("p95_deviation_mm")),
-                _format_mm_with_unit(item.get("max_deviation_mm")),
+                item.get("candidate_point_count", 0),
+                _format_mm_with_unit(item.get("wall_half_width_mm")),
+                _format_mm_with_unit(item.get("raw_centerline_avg_mm")),
+                _format_mm_with_unit(item.get("raw_centerline_p90_mm")),
+                _format_mm_with_unit(item.get("raw_centerline_max_mm")),
+                _format_mm_with_unit(item.get("corrected_avg_mm")),
+                _format_mm_with_unit(item.get("corrected_p75_mm")),
+                _format_mm_with_unit(item.get("corrected_p90_mm")),
+                _format_mm_with_unit(item.get("corrected_p95_mm")),
+                _format_mm_with_unit(item.get("corrected_max_mm")),
                 item.get("status", u"N/A"),
+                item.get("classification_metric", u"P75"),
                 item.get("coordinate_mode", u"N/A"),
                 item.get("distance_sanity_check", u"N/A"),
-                review_id_by_wall.get(_to_text(wall_id), u"")
+                review_id_by_wall.get(_to_text(wall_id), u""),
+                item.get("skip_reason", item.get("message", u""))
             ])
         if wall_result_rows:
             output.print_md("#### Wall Deviation Results")
@@ -770,13 +793,22 @@ def _render_marker_preview(output, marker_preview_result):
                 columns=[
                     u"Wall",
                     u"Point Count",
-                    u"Avg",
-                    u"P95",
-                    u"Max",
+                    u"Candidate Point Count",
+                    u"Wall Half Width",
+                    u"Centerline Avg",
+                    u"Centerline P90",
+                    u"Centerline Max",
+                    u"Face Avg",
+                    u"Face P75",
+                    u"Face P90",
+                    u"Face P95",
+                    u"Face Max",
                     u"Status",
+                    u"Status Metric",
                     u"Coordinate Mode",
                     u"Sanity Check",
-                    u"Review ID"
+                    u"Review ID",
+                    u"Skip Reason"
                 ]
             )
 
@@ -801,9 +833,9 @@ def _render_marker_preview(output, marker_preview_result):
                 table_data=coordinate_mode_rows,
                 columns=[
                     u"Wall",
-                    u"Raw Avg/P95/Max",
-                    u"Transform Avg/P95/Max",
-                    u"TotalTransform Avg/P95/Max",
+                    u"Raw Avg/P75/P90/P95/Max",
+                    u"Transform Avg/P75/P90/P95/Max",
+                    u"TotalTransform Avg/P75/P90/P95/Max",
                     u"Used",
                     u"Sanity"
                 ]
@@ -825,6 +857,24 @@ def _render_marker_preview(output, marker_preview_result):
             output.print_table(
                 table_data=no_point_rows,
                 columns=[u"Wall", u"Reason"]
+            )
+
+        no_reliable_rows = []
+        no_reliable_details = plan_preview.get("no_reliable_data_details") or []
+        if not isinstance(no_reliable_details, (list, tuple)):
+            no_reliable_details = []
+        for item in no_reliable_details:
+            if not hasattr(item, "get"):
+                continue
+            no_reliable_rows.append([
+                u"Wall {0}".format(item.get("wall_id", u"N/A")),
+                item.get("message", u"No Reliable Wall Surface Data")
+            ])
+        if no_reliable_rows:
+            output.print_md("#### No Reliable Wall Surface Data")
+            output.print_table(
+                table_data=no_reliable_rows,
+                columns=[u"Wall", u"Skip Reason"]
             )
 
         coordinate_mismatch_rows = []
@@ -904,9 +954,9 @@ def _render_marker_preview(output, marker_preview_result):
     else:
         output.print_md(
             "> **MVP:** Selected Walls uses Point Cloud sampling when available. "
-            "If sampling fails, the affected Walls are reported as No Point Data "
-            "or Sampling Error and Scan QC continues. Point Cloud colors were not "
-            "modified."
+            "If sampling fails, the affected Walls are reported as No Point Data, "
+            "No Reliable Wall Surface Data, or Sampling Error and Scan QC "
+            "continues. Point Cloud colors were not modified."
         )
 
 
@@ -928,18 +978,18 @@ def render_scan_qc_summary(
     tolerance_rows = [
         [
             u"OK",
-            u"0 to {0} mm".format(_format_mm(tolerance_mm.get("ok_max", 10)))
+            u"0 to {0} mm".format(_format_mm(tolerance_mm.get("ok_max", 30)))
         ],
         [
             u"Review",
             u"{0} to {1} mm".format(
-                _format_mm(tolerance_mm.get("ok_max", 10)),
-                _format_mm(tolerance_mm.get("review_max", 30))
+                _format_mm(tolerance_mm.get("ok_max", 30)),
+                _format_mm(tolerance_mm.get("review_max", 80))
             )
         ],
         [
             u"Critical",
-            u"> {0} mm".format(_format_mm(tolerance_mm.get("review_max", 30)))
+            u"> {0} mm".format(_format_mm(tolerance_mm.get("review_max", 80)))
         ]
     ]
 
