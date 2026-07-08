@@ -146,7 +146,7 @@ def main():
         ("Run Full QC.pushbutton", icon_full_qc),
         ("Quick QC.pushbutton", icon_quick_qc),
         ("QC Settings.pushbutton", icon_settings),
-        ("Open Last Report.pushbutton", icon_open_report),
+        ("Last Report.pushbutton", icon_open_report),
         ("Help.pushbutton", icon_help)
     ]
 

@@ -103,9 +103,14 @@ Revit에서 `QC Settings`를 열고 다음 순서로 확인합니다.
    - QC Settings
    - Open Last Report
    - Help
+   - Scan QC
 4. `Help`를 실행해 pyRevit Output이 열리는지 확인합니다.
 5. 테스트 모델에서 `Quick QC`를 실행하고 결과가 pyRevit Output에 표시되는지
    확인합니다.
+
+`Scan QC`는 현재 개발 중인 Point Cloud 기반 검토 기능입니다. 버튼이 보이더라도
+실제 프로젝트 적용 전에는 테스트 모델에서 Source Plan View, Point Cloud Instance,
+Selected Walls 흐름을 먼저 검증해 주세요.
 
 버튼이 보이지 않으면 extension 검색 경로가 저장소 루트를 가리키는지,
 `YJH_RevitTools.extension/Revit QC.tab/QC Toolkit.panel` 구조가 유지되어 있는지 확인한 뒤 다시

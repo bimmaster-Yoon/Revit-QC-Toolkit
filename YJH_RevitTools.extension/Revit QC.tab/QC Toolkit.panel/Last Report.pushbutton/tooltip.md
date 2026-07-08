@@ -1,4 +1,4 @@
-# Open Last Report
+# Last Report
 
 마지막으로 생성된 QC 리포트를 엽니다.
 

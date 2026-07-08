@@ -72,6 +72,40 @@ Quick QC의 기본 Export 선택은 `Summary CSV`와 `Styled XLSX Report`이며,
 Toolkit의 버튼 구성, Rule Set, Export Options, Styled XLSX 환경과 read-only 동작을
 pyRevit Output에서 확인합니다.
 
+## Scan QC
+
+`Scan QC`는 Point Cloud 기반 Wall deviation 검토를 목표로 개발 중인 기능입니다.
+기존 Sheet QC, View QC, Parameter QC와 분리된 `scan_qc` 모듈에서 동작합니다.
+
+현재 지원하는 흐름은 다음과 같습니다.
+
+1. Source Plan View를 선택합니다.
+2. Point Cloud Instance를 선택합니다.
+3. Analysis Scope를 선택합니다.
+   - Active Plan Level
+   - Selected Walls
+4. Tolerance 값을 확인하거나 이번 실행용으로 입력합니다.
+5. 필요한 출력 옵션을 선택합니다.
+6. `Run`을 눌러 standards check, working view creation, deviation/preview flow를 실행합니다.
+
+현재 2D 표현 방식:
+
+- 생성된 `SCAN_QC_PLAN_*` 뷰에 Revision Cloud를 배치합니다.
+- 각 Revision Cloud 중앙에 `A`, `B`, `C` 같은 알파벳 ID를 표시합니다.
+- 상세 정보는 pyRevit Output의 ID mapping과 Wall deviation table에서 확인합니다.
+- 향후 PDF/image report 또는 시트 하단/우측 표로 정리하는 흐름을 계획하고 있습니다.
+
+Selected Walls MVP에서는 선택한 Wall 주변의 Point Cloud points를 샘플링하고,
+PointCloudInstance transform 후보를 비교한 뒤 WallType.Width/2를 보정한 wall-face
+deviation 기준으로 OK/Review/Critical을 판단합니다.
+
+현재 제한:
+
+- Active Plan Level 전체 Wall deviation은 아직 fallback/preview 성격입니다.
+- Scan QC PDF, CSV export는 아직 구현되지 않았습니다.
+- Point Cloud 자체 색상은 변경하지 않습니다.
+- 3D preview marker는 현재 비활성화되어 있습니다.
+
 ## Export Options
 
 Full QC 또는 Quick QC를 누르면 검사 전에 Export Options가 열립니다.

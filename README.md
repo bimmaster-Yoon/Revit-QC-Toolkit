@@ -6,78 +6,302 @@ Latest clean distribution release:
 
 # Revit QC Toolkit
 
-Revit 2026 모델의 Sheet, View, Parameter 상태를 점검하고 결과를 pyRevit Output과
-CSV/XLSX 보고서로 정리하는 pyRevit 기반 QC Toolkit입니다.
+Revit QC Toolkit is a pyRevit extension for Revit 2026 that helps review BIM model,
+drawing, and documentation quality from inside Revit. It started as a Sheet/View/
+Parameter QC tool and is now being expanded with a Scan QC workflow for point-cloud-
+based wall deviation review.
 
-이 프로젝트는 **read-only 검사 도구**입니다. Revit 요소를 생성·수정·삭제하는
-Transaction을 사용하지 않으며, 실행 중인 모델의 정보를 수집해 검토 항목을
-보고하는 데 목적이 있습니다.
+The toolkit is designed as a practical BIM/DX portfolio project: it focuses on
+repeatable model checks, readable review summaries, and report outputs that can be
+used during interior design documentation and coordination.
 
-## 주요 기능
+> Current safety note: the existing Sheet QC, View QC, Parameter QC, summary, and
+> report export tools are read-only inspection workflows. Scan QC is in active
+> development and currently creates dedicated QC working views and 2D review
+> annotations only in generated `SCAN_QC_*` views.
 
-- Sheet Number, Sheet Name, 배치 View 유무 검사
-- View 이름의 임시 키워드, Scale, View Template, Sheet 배치 상태 검사
-- JSON Rule Set에 정의된 카테고리별 필수 Parameter와 입력값 검사
-- 반복 Issue를 Review Group으로 묶은 pyRevit Output 요약
-- 전체 상세 항목을 보존하는 Full CSV
-- 그룹별 검토 항목을 정리하는 Summary CSV
-- `QC Summary`, `Review Groups`, `Key Samples`, `Full Detail` 시트로 구성된 Styled XLSX
-- Default, Interior, Company 및 사용자 정의 Rule Set 선택
-- 마지막으로 생성한 보고서 열기
+## Project Overview
 
-## 버튼 구성
+This repository contains a pyRevit extension named `YJH_RevitTools.extension`.
+The main ribbon location is:
 
-| 버튼 | 역할 |
+```text
+Revit QC > QC Toolkit
+```
+
+The toolkit supports two review tracks:
+
+1. **Model / drawing metadata QC**
+   - Sheet QC
+   - View QC
+   - Parameter QC
+   - Compact Summary
+   - Review Group Summary
+   - Review Item Samples
+   - Full/Summary CSV export
+   - Styled Excel report export
+
+2. **Scan QC, in progress**
+   - Source Plan View selection
+   - Point Cloud instance selection
+   - Selected Walls / Active Plan Level analysis scope
+   - QC Plan and QC 3D working view creation
+   - Standards validation and installation
+   - 2D Revision Cloud callouts with centered A/B/C IDs
+   - Early PointCloudInstance sampling and wall deviation debug
+
+## Features
+
+### Sheet QC
+
+- Checks sheet number and sheet name state.
+- Reviews whether sheets contain placed views.
+- Reports sheet-related issues as individual review items and grouped summaries.
+
+### View QC
+
+- Checks view naming issues such as temporary keywords.
+- Reviews view scale, template assignment, and sheet placement state.
+- Helps identify unplaced or coordination-risk views before documentation delivery.
+
+### Parameter QC
+
+- Uses JSON rule sets to define required parameters by category.
+- Checks missing or empty required parameter values.
+- Supports default, interior, company-template, and custom rule presets.
+
+### Compact Summary
+
+- Shows a short pyRevit Output summary for quick review.
+- Highlights checked sheet/view/parameter counts, total review items, grouped issues,
+  and QC status.
+
+### Review Group Summary
+
+- Groups repeated issues by category, item type, QC item, and issue message.
+- Keeps the output readable when many elements share the same issue.
+- Shows sample items without hiding the full detail export.
+
+### Review Item Samples
+
+- Displays key examples from the detected review items.
+- Keeps the on-screen report compact while preserving complete raw data in exports.
+
+### Full / Summary Report Export
+
+- **Full CSV**: all individual review items.
+- **Summary CSV**: grouped issue summary for review meetings and tracking.
+- **Styled Excel Report**: formatted workbook with summary, review groups, key
+  samples, and full detail sheets.
+- Export can be disabled when the user only wants to inspect pyRevit Output.
+
+### Scan QC - In Progress
+
+Scan QC is being developed as a separate feature module under `lib/scan_qc`.
+
+Current direction:
+
+- 2D plan-view-based review workflow.
+- Scan QC setup dialog for source plan view, point cloud, analysis scope, tolerance,
+  and output options.
+- QC Plan View and QC 3D View generation from project standards.
+- Revision Cloud callouts in generated `SCAN_QC_PLAN_*` views.
+- Each Revision Cloud displays a centered uppercase ID such as `A`, `B`, or `C`.
+- Detailed callout information is shown in pyRevit Output and is planned to be
+  reused later in PDF/image reports or a sheet-side/bottom summary table.
+- Point cloud sampling is currently limited to a Selected Walls MVP path.
+- Wall deviation debug includes coordinate transform checks and wall-face correction.
+
+Current Scan QC limitations:
+
+- Active Plan Level full-wall deviation is still a fallback/preview path.
+- PDF and CSV outputs for Scan QC are not implemented yet.
+- Point cloud points are not recolored.
+- 3D preview markers are disabled for now.
+- Deviation results should be treated as an MVP validation workflow until tested
+  against more project datasets.
+
+## Current Status
+
+| Area | Status |
 | --- | --- |
-| **Run Full QC** | Sheet, View, Parameter 전체 QC를 실행합니다. |
-| **Quick QC** | Parameter QC를 제외하고 Sheet와 View를 빠르게 검사합니다. |
-| **QC Settings** | Styled XLSX용 Python 환경과 현재 JSON Rule Set을 관리합니다. |
-| **Open Last Report** | 마지막으로 정상 생성되어 기록된 XLSX 또는 CSV를 엽니다. |
-| **Help** | 버튼, Rule Set, Export Options 사용 방법을 pyRevit Output에 표시합니다. |
+| Sheet QC | Working |
+| View QC | Working |
+| Parameter QC | Working |
+| Compact Summary | Working |
+| Review Group Summary | Working |
+| Review Item Samples | Working |
+| Full CSV Export | Working |
+| Summary CSV Export | Working |
+| Styled Excel Report | Working with external CPython + `openpyxl` |
+| QC Settings / Rule Presets | Working |
+| Open Last Report | Working |
+| Scan QC UI | In progress |
+| Scan QC Standards Check / Install | In progress |
+| Scan QC Working Views | In progress |
+| Scan QC Revision Cloud ID Callouts | In progress |
+| Scan QC Point Cloud Deviation | MVP / debugging |
+| Scan QC PDF / Image Report | Planned |
+| Scan QC CSV Export | Planned |
 
-## 결과 확인과 Export
+## Folder Structure
 
-QC 결과는 실행 후 항상 pyRevit Output에 표시됩니다. 파일 저장이 필요하지 않으면
-Export Options에서 `Full CSV`, `Summary CSV`, `Styled XLSX Report`를 모두 해제하고
-검사만 실행할 수 있습니다.
+```text
+Revit_Codex_Automation/
+├─ README.md
+├─ CHANGELOG.md
+├─ requirements.txt
+├─ docs/
+│  ├─ INSTALL.md
+│  ├─ USAGE.md
+│  ├─ CONFIG.md
+│  ├─ workflow.md
+│  └─ changelog.md
+└─ YJH_RevitTools.extension/
+   ├─ Revit QC.tab/
+   │  └─ QC Toolkit.panel/
+   │     ├─ Run Full QC.pushbutton/
+   │     ├─ Quick QC.pushbutton/
+   │     ├─ QC Settings.pushbutton/
+   │     ├─ Open Last Report.pushbutton/
+   │     ├─ Help.pushbutton/
+   │     └─ Scan QC.pushbutton/
+   ├─ config/
+   │  ├─ qc_config_default.json
+   │  ├─ qc_config_interior.json
+   │  ├─ qc_config_company_template.json
+   │  └─ scan_qc_defaults.json
+   ├─ lib/
+   │  ├─ checks_sheet.py
+   │  ├─ checks_view.py
+   │  ├─ checks_parameter.py
+   │  ├─ exporters.py
+   │  ├─ grouping.py
+   │  ├─ report_ui.py
+   │  └─ scan_qc/
+   │     ├─ dialog.py
+   │     ├─ settings.py
+   │     ├─ standards.py
+   │     ├─ source_views.py
+   │     ├─ views.py
+   │     ├─ deviation.py
+   │     ├─ markers.py
+   │     └─ reporting.py
+   ├─ resources/
+   │  ├─ standards/
+   │  ├─ families/
+   │  └─ report_templates/
+   ├─ reports/
+   └─ tools/
+      └─ make_styled_xlsx.py
+```
 
-- **Full CSV**: 개별 Issue 전체를 보존하는 상세 데이터
-- **Summary CSV**: Category, Item Type, QC Item, Issue Message 기준의 그룹 요약
-- **Styled XLSX Report**: 검토·공유·보고용으로 서식을 적용한 Excel 보고서
+## Installation / Setup
 
-Styled XLSX는 외부 Python과 `openpyxl`을 사용합니다. Python 환경이 준비되지 않아도
-Revit QC와 CSV Export는 사용할 수 있습니다.
+Requirements:
 
-## JSON Rule Set
+- Windows
+- Autodesk Revit 2026
+- pyRevit connected to Revit 2026
+- Git or GitHub Desktop
+- Optional: external CPython with `openpyxl` for Styled Excel Report export
 
-검사 기준은 `YJH_RevitTools.extension/config`의 JSON Rule Set으로 관리합니다.
-`QC Settings`에서 Rule Set을 선택하고 `Use This`를 누르면 다음 Full/Quick QC부터
-해당 기준이 적용됩니다. 개인 Python 경로와 활성 Rule Set 정보는 Git에서 제외되는
-`qc_config_local.json`에 저장됩니다.
+Basic setup:
 
-자세한 구조와 관리 기준은 [설정 가이드](docs/CONFIG.md)를 확인해 주세요.
+1. Clone the repository.
+2. Add the repository root folder to pyRevit custom extension directories.
+3. Reload pyRevit.
+4. Confirm the `Revit QC > QC Toolkit` panel appears in Revit.
+5. Optional: install Excel report dependencies.
 
-## 시작하기
+```powershell
+py -3 -m pip install -r requirements.txt
+```
 
-1. [설치 가이드](docs/INSTALL.md)에 따라 저장소와 pyRevit extension을 연결합니다.
-2. Revit에서 pyRevit Reload 후 `Revit QC > QC Toolkit` 패널을 확인합니다.
-3. `QC Settings`에서 Python 환경과 Rule Set을 확인합니다.
-4. [사용 가이드](docs/USAGE.md)에 따라 Full QC 또는 Quick QC를 실행합니다.
+Then open `QC Settings` in Revit and select the Python executable that has
+`openpyxl` installed.
 
-버전별 변경 내역은 [기존 Changelog](docs/changelog.md), 상세 동작 흐름은
-[Workflow](docs/workflow.md)에서 확인할 수 있습니다.
+More setup details are available in [docs/INSTALL.md](docs/INSTALL.md).
 
-## 프로젝트 성격
+## Usage
 
-이 저장소는 Revit 기반 인테리어 실시설계 업무에서 반복되는 모델·도면 검토를
-표준화하는 프로젝트입니다. 단순 결과 화면보다 다음 실무 역량을
-보여주는 데 초점을 둡니다.
+### Run Full QC
 
-- 도면과 모델의 정합성 검토 기준 구조화
-- Sheet/View/Parameter 검사 모듈 분리
-- 회사·프로젝트별 JSON Rule Set 운영
-- 원본 상세 데이터와 보고용 결과물의 분리
-- pyRevit 기반 실무 도구 배포와 로컬 설정 관리
+Use this for a full Sheet + View + Parameter review.
 
-이 도구의 결과는 검토를 지원하는 자료이며, 프로젝트 기준 충족 여부에 대한 최종
-판단과 모델 수정은 담당 실무자가 수행합니다.
+1. Open a Revit 2026 model.
+2. Click `Run Full QC`.
+3. Choose export options.
+4. Review pyRevit Output and exported files.
+
+### Quick QC
+
+Use this for a faster Sheet + View review when Parameter QC is not needed.
+
+### QC Settings
+
+Use this to:
+
+- Set the external Python path for Styled Excel Report export.
+- Test `openpyxl` availability.
+- Select the active JSON rule preset.
+- Copy a preset into a custom rule set.
+
+### Scan QC
+
+Use this only as an in-progress validation workflow.
+
+Current Scan QC flow:
+
+1. Open a model with walls and Point Cloud instances.
+2. Click `Scan QC`.
+3. Select a Source Plan View.
+4. Select a Point Cloud instance.
+5. Choose `Active Plan Level` or `Selected Walls`.
+6. Confirm tolerance and output options.
+7. Run Scan QC.
+8. Review generated QC working views and pyRevit Output.
+
+For Selected Walls, the current MVP samples nearby point cloud points, compares
+coordinate modes, applies wall-face correction using wall thickness, and creates
+Revision Cloud ID callouts for Review/Critical results.
+
+## Roadmap
+
+Planned improvements:
+
+- Harden Scan QC point cloud sampling across more Revit/point-cloud datasets.
+- Improve wall-face deviation logic for non-linear walls and complex wall geometry.
+- Add Scan QC PDF or image report output.
+- Add Scan QC CSV export.
+- Add a sheet/report table that maps A/B/C Revision Cloud IDs to detailed findings.
+- Expand Scan QC standards automation with view templates and report assets.
+- Add more validation around point cloud coordinate systems and transforms.
+- Continue keeping Sheet/View/Parameter QC behavior stable while Scan QC evolves.
+
+## Portfolio Notes
+
+This repository is intended to demonstrate practical Revit/BIM/DX implementation
+ability, not only UI mockups.
+
+It highlights:
+
+- pyRevit extension structure and deployment awareness.
+- Revit model and drawing QC logic.
+- Rule-set-driven parameter checking.
+- Report design for both compact review and full traceability.
+- Local settings management without committing user-specific paths.
+- Early point-cloud-based Scan QC exploration using Revit API constraints.
+- A workflow that connects BIM model checking to coordination-ready deliverables.
+
+No confidential company data, real project names, client names, pricing data, or
+internal project documents are required to use this repository.
+
+## Documentation
+
+- [Installation Guide](docs/INSTALL.md)
+- [Usage Guide](docs/USAGE.md)
+- [Configuration Guide](docs/CONFIG.md)
+- [Workflow Notes](docs/workflow.md)
+- [Detailed Historical Changelog](docs/changelog.md)
+- [Repository Changelog](CHANGELOG.md)

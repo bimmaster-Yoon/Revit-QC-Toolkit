@@ -367,7 +367,7 @@ class HelpForm(Form):
                 ("Run Full QC", "Sheet, View, Parameter를 모두 검토합니다."),
                 ("Quick QC", "Sheet와 View 중심으로 빠르게 검토합니다."),
                 ("QC Settings", "Excel Report 환경과 QC Rule Set을 설정합니다."),
-                ("Open Last Report", "마지막으로 저장한 보고서를 엽니다."),
+                ("Last Report", "마지막으로 저장한 보고서를 엽니다."),
                 ("Help", "이 도움말을 표시합니다."),
             ],
             360,

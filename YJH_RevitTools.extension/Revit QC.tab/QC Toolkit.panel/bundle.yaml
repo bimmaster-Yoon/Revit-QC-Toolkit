@@ -1,6 +1,7 @@
 layout:
   - Run Full QC
   - Quick QC
+  - Scan QC
   - QC Settings
-  - Open Last Report
+  - Last Report
   - Help

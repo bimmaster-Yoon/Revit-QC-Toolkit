@@ -22,7 +22,7 @@ from report_ui import html_escape
 
 
 output = script.get_output()
-output.set_title("Open Last QC Report")
+output.set_title("Last QC Report")
 report_path, read_error = read_latest_report_path(REPORTS_DIR)
 
 if read_error:
@@ -38,13 +38,13 @@ else:
 
     if opened:
         output.print_html(
-            u"<h2>Open Last Report</h2><p>파일을 열었습니다.<br>{0}</p>".format(
+            u"<h2>Last Report</h2><p>파일을 열었습니다.<br>{0}</p>".format(
                 html_escape(report_path)
             )
         )
     else:
         output.print_html(
-            u"<h2>Open Last Report</h2><p>{0}</p>".format(
+            u"<h2>Last Report</h2><p>{0}</p>".format(
                 html_escape(open_error)
             )
         )

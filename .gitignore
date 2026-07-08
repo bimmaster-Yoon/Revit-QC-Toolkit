@@ -62,6 +62,13 @@ YJH_RevitTools.extension/reports/latest_export_folder.txt
 /reports/latest_report_path.txt
 /reports/latest_export_folder.txt
 
+# Generated release packages
+release/
+dist/
+
+# Development-only probe tools
+YJH_RevitTools.extension/tools/dev/
+
 # Documentation images must remain trackable
 !docs/images/
 !docs/images/**/*.png
