@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import math
+
 from Autodesk.Revit.DB import (
     BuiltInParameter,
     Color,
@@ -45,6 +47,10 @@ CRITICAL_COLOR = Color(220, 40, 40)
 REVIEW_LINE_WEIGHT = 5
 CRITICAL_LINE_WEIGHT = 6
 REVISION_CLOUD_HALF_SIZE_MM = 650.0
+REVISION_CLOUD_CLUSTER_SIDE_MARGIN_MM = 250.0
+REVISION_CLOUD_CLUSTER_LENGTH_PADDING_MM = 150.0
+CLOSE_CLUSTER_MERGE_GAP_MM = 300.0
+OVERLAP_SKIP_RATIO = 0.5
 PREVIEW_ID_TEXT_SIZE_MM = 5.0
 MIN_PREVIEW_SPACING_MM = 1000.0
 DEFAULT_PREVIEW_SPACING_MM = 1500.0
@@ -274,15 +280,349 @@ def _create_deviation_label(deviation_item):
     )
 
 
+def _get_top_n_callouts(deviation_result):
+    if not hasattr(deviation_result, "get"):
+        return 7
+    try:
+        top_n_callouts = int(deviation_result.get("top_n_callouts", 7))
+    except Exception:
+        top_n_callouts = 7
+    if top_n_callouts <= 0:
+        return 7
+    return top_n_callouts
+
+
+def _marker_item_sort_key(marker_item):
+    if not hasattr(marker_item, "get"):
+        return (0, 0.0, 0.0, 0.0, 0)
+    severity = marker_item.get("severity")
+    severity_rank = 2 if severity == STATUS_CRITICAL else 1
+    cluster = marker_item.get("cluster") or {}
+    if not hasattr(cluster, "get"):
+        cluster = {}
+    p90_mm = cluster.get("p90_mm")
+    p75_mm = cluster.get("p75_mm")
+    length_mm = marker_item.get("cluster_length_mm")
+    point_count = marker_item.get("cluster_point_count")
+    try:
+        p90_mm = float(p90_mm)
+    except Exception:
+        p90_mm = 0.0
+    try:
+        p75_mm = float(p75_mm)
+    except Exception:
+        p75_mm = 0.0
+    try:
+        length_mm = float(length_mm)
+    except Exception:
+        length_mm = 0.0
+    try:
+        point_count = int(point_count)
+    except Exception:
+        point_count = 0
+    return (
+        -severity_rank,
+        -p90_mm,
+        -p75_mm,
+        -length_mm,
+        -point_count
+    )
+
+
+def _safe_float(value, fallback=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return fallback
+
+
+def _safe_int(value, fallback=0):
+    try:
+        return int(value)
+    except Exception:
+        return fallback
+
+
+def _severity_rank(status):
+    return 2 if status == STATUS_CRITICAL else 1
+
+
+def _cluster_start_distance_mm(cluster):
+    if not hasattr(cluster, "get"):
+        return 0.0
+    return _safe_float(cluster.get("start_distance_mm"), 0.0)
+
+
+def _cluster_end_distance_mm(cluster):
+    if not hasattr(cluster, "get"):
+        return _cluster_start_distance_mm(cluster)
+    return _safe_float(
+        cluster.get("end_distance_mm"),
+        _cluster_start_distance_mm(cluster)
+    )
+
+
+def _cluster_gap_mm(left_cluster, right_cluster):
+    return (
+        _cluster_start_distance_mm(right_cluster)
+        - _cluster_end_distance_mm(left_cluster)
+    )
+
+
+def _merge_cluster_values(left_cluster, right_cluster):
+    left_start = _cluster_start_distance_mm(left_cluster)
+    right_end = _cluster_end_distance_mm(right_cluster)
+    start_distance = min(left_start, _cluster_start_distance_mm(right_cluster))
+    end_distance = max(_cluster_end_distance_mm(left_cluster), right_end)
+    length_mm = max(0.0, end_distance - start_distance)
+    left_points = _safe_int(left_cluster.get("point_count"), 0)
+    right_points = _safe_int(right_cluster.get("point_count"), 0)
+    point_count = left_points + right_points
+    if _severity_rank(right_cluster.get("status")) > _severity_rank(
+        left_cluster.get("status")
+    ):
+        status = right_cluster.get("status")
+    else:
+        status = left_cluster.get("status")
+
+    merged_indexes = []
+    for cluster in (left_cluster, right_cluster):
+        values = cluster.get("merged_from_cluster_indexes")
+        if isinstance(values, (list, tuple)):
+            merged_indexes.extend(values)
+        else:
+            merged_indexes.append(cluster.get("cluster_index"))
+    merged_indexes = [value for value in merged_indexes if value not in (None, u"")]
+
+    return {
+        "cluster_index": u"+".join([_to_text(value) for value in merged_indexes]),
+        "merged": True,
+        "merged_from_cluster_indexes": merged_indexes,
+        "status": status,
+        "point_count": point_count,
+        "length_mm": length_mm,
+        "density_per_m": (
+            float(point_count) / max(length_mm / 1000.0, 0.001)
+            if point_count > 0
+            else 0.0
+        ),
+        "start_parameter": min(
+            _safe_float(left_cluster.get("start_parameter"), 0.0),
+            _safe_float(right_cluster.get("start_parameter"), 0.0)
+        ),
+        "end_parameter": max(
+            _safe_float(left_cluster.get("end_parameter"), 1.0),
+            _safe_float(right_cluster.get("end_parameter"), 1.0)
+        ),
+        "start_distance_mm": start_distance,
+        "end_distance_mm": end_distance,
+        "avg_mm": max(
+            _safe_float(left_cluster.get("avg_mm"), 0.0),
+            _safe_float(right_cluster.get("avg_mm"), 0.0)
+        ),
+        "median_mm": max(
+            _safe_float(left_cluster.get("median_mm"), 0.0),
+            _safe_float(right_cluster.get("median_mm"), 0.0)
+        ),
+        "p75_mm": max(
+            _safe_float(left_cluster.get("p75_mm"), 0.0),
+            _safe_float(right_cluster.get("p75_mm"), 0.0)
+        ),
+        "p90_mm": max(
+            _safe_float(left_cluster.get("p90_mm"), 0.0),
+            _safe_float(right_cluster.get("p90_mm"), 0.0)
+        ),
+        "p95_mm": max(
+            _safe_float(left_cluster.get("p95_mm"), 0.0),
+            _safe_float(right_cluster.get("p95_mm"), 0.0)
+        ),
+        "max_mm": max(
+            _safe_float(left_cluster.get("max_mm"), 0.0),
+            _safe_float(right_cluster.get("max_mm"), 0.0)
+        )
+    }
+
+
+def _merge_close_clusters(clusters):
+    if not isinstance(clusters, (list, tuple)):
+        return [], 0
+    sorted_clusters = sorted(
+        [cluster for cluster in clusters if hasattr(cluster, "get")],
+        key=_cluster_start_distance_mm
+    )
+    merged_clusters = []
+    merge_count = 0
+    for cluster in sorted_clusters:
+        if not merged_clusters:
+            merged_clusters.append(cluster)
+            continue
+        previous_cluster = merged_clusters[-1]
+        if _cluster_gap_mm(previous_cluster, cluster) <= CLOSE_CLUSTER_MERGE_GAP_MM:
+            merged_clusters[-1] = _merge_cluster_values(previous_cluster, cluster)
+            merge_count += 1
+        else:
+            merged_clusters.append(cluster)
+    return merged_clusters, merge_count
+
+
+def _rect_area(rectangle):
+    if not hasattr(rectangle, "get"):
+        return 0.0
+    width = max(0.0, rectangle.get("max_x", 0.0) - rectangle.get("min_x", 0.0))
+    height = max(0.0, rectangle.get("max_y", 0.0) - rectangle.get("min_y", 0.0))
+    return width * height
+
+
+def _rect_overlap_area(left_rectangle, right_rectangle):
+    if not hasattr(left_rectangle, "get") or not hasattr(right_rectangle, "get"):
+        return 0.0
+    overlap_width = max(
+        0.0,
+        min(left_rectangle.get("max_x", 0.0), right_rectangle.get("max_x", 0.0))
+        - max(left_rectangle.get("min_x", 0.0), right_rectangle.get("min_x", 0.0))
+    )
+    overlap_height = max(
+        0.0,
+        min(left_rectangle.get("max_y", 0.0), right_rectangle.get("max_y", 0.0))
+        - max(left_rectangle.get("min_y", 0.0), right_rectangle.get("min_y", 0.0))
+    )
+    return overlap_width * overlap_height
+
+
+def _overlap_ratio_against_smaller(left_rectangle, right_rectangle):
+    overlap_area = _rect_overlap_area(left_rectangle, right_rectangle)
+    smaller_area = min(_rect_area(left_rectangle), _rect_area(right_rectangle))
+    if smaller_area <= 0.0:
+        return 0.0
+    return overlap_area / smaller_area
+
+
+def _marker_item_rectangle(plan_view, marker_item):
+    outline_points = _get_cluster_outline_points(plan_view, marker_item)
+    if not outline_points:
+        return None
+    origin = _get_view_plane_origin(plan_view)
+    right, up = _get_view_basis(plan_view)
+    x_values = []
+    y_values = []
+    for point in outline_points:
+        delta = point.Subtract(origin)
+        x_values.append(delta.DotProduct(right))
+        y_values.append(delta.DotProduct(up))
+    if not x_values or not y_values:
+        return None
+    return {
+        "min_x": min(x_values),
+        "max_x": max(x_values),
+        "min_y": min(y_values),
+        "max_y": max(y_values)
+    }
+
+
+def _dedupe_and_limit_marker_items(plan_view, marker_items, top_n_callouts):
+    sorted_items = sorted(marker_items, key=_marker_item_sort_key)
+    selected_items = []
+    overlap_skipped = []
+    top_n_skipped = []
+
+    for marker_item in sorted_items:
+        marker_item["callout_rectangle"] = _marker_item_rectangle(
+            plan_view,
+            marker_item
+        )
+        overlapping_item = None
+        overlap_ratio = 0.0
+        for selected_item in selected_items:
+            ratio = _overlap_ratio_against_smaller(
+                marker_item.get("callout_rectangle"),
+                selected_item.get("callout_rectangle")
+            )
+            if ratio >= OVERLAP_SKIP_RATIO:
+                overlapping_item = selected_item
+                overlap_ratio = ratio
+                break
+
+        if overlapping_item is not None:
+            overlap_id = overlapping_item.get("id", u"N/A")
+            skipped_record = {
+                "wall_id": marker_item.get("wall_id", u"N/A"),
+                "cluster_index": marker_item.get("cluster_index", u"N/A"),
+                "severity": marker_item.get("severity", u"N/A"),
+                "overlap_with_id": overlap_id,
+                "overlap_ratio": overlap_ratio,
+                "skipped_reason": u"Overlap with Review ID {0}".format(overlap_id)
+            }
+            marker_item["skipped_reason"] = skipped_record["skipped_reason"]
+            overlap_skipped.append(skipped_record)
+            continue
+
+        if len(selected_items) >= top_n_callouts:
+            marker_item["skipped_reason"] = u"Skipped by Top N Callouts limit"
+            top_n_skipped.append(marker_item)
+            continue
+
+        marker_item["id"] = _get_preview_id(len(selected_items))
+        selected_items.append(marker_item)
+
+    return selected_items, overlap_skipped, top_n_skipped
+
+
+def _should_create_fallback_preview(
+    deviation_result,
+    preview_callouts_on_no_deviation_data
+):
+    if not preview_callouts_on_no_deviation_data:
+        return False
+    if not hasattr(deviation_result, "get"):
+        return True
+
+    ok_count = int(deviation_result.get("ok_count", 0) or 0)
+    review_count = int(deviation_result.get("review_count", 0) or 0)
+    critical_count = int(deviation_result.get("critical_count", 0) or 0)
+    if ok_count > 0 or review_count > 0 or critical_count > 0:
+        return False
+
+    processed_count = int(deviation_result.get("processed_wall_count", 0) or 0)
+    if processed_count <= 0:
+        return True
+
+    sampling_status = _to_text(
+        deviation_result.get("point_cloud_sampling_status", u"")
+    ).lower()
+    unavailable_terms = [
+        u"unavailable",
+        u"fallback",
+        u"no point data",
+        u"sampling error",
+        u"no reliable",
+        u"coordinate mismatch",
+        u"skipped"
+    ]
+    for term in unavailable_terms:
+        if term in sampling_status:
+            return True
+
+    return False
+
+
 def _get_deviation_marker_items(plan_view, deviation_result):
     if not hasattr(deviation_result, "get"):
-        return [], []
+        return [], [], {}
 
     marker_items = []
     warnings = []
+    selection_summary = {
+        "candidate_callout_count": 0,
+        "merged_cluster_count": 0,
+        "overlap_skipped_callout_count": 0,
+        "top_n_skipped_callout_count": 0,
+        "overlap_skipped_callouts": []
+    }
     results = deviation_result.get("results") or []
     if not isinstance(results, (list, tuple)):
-        return marker_items, [u"Deviation result rows were not in a readable list format."]
+        return marker_items, [
+            u"Deviation result rows were not in a readable list format."
+        ], selection_summary
 
     for deviation_item in results:
         if not hasattr(deviation_item, "get"):
@@ -290,6 +630,27 @@ def _get_deviation_marker_items(plan_view, deviation_result):
         status = deviation_item.get("status")
         if status not in (STATUS_REVIEW, STATUS_CRITICAL):
             continue
+        clusters = deviation_item.get("deviation_clusters") or []
+        if not clusters:
+            warnings.append(
+                u"Wall {0} was {1}, but no deviation cluster was available for "
+                u"rectangular callout placement.".format(
+                    deviation_item.get("wall_id", u"N/A"),
+                    status
+                )
+            )
+            continue
+        clusters, merge_count = _merge_close_clusters(clusters)
+        if merge_count:
+            selection_summary["merged_cluster_count"] += merge_count
+            warnings.append(
+                u"Wall {0}: {1} adjacent deviation cluster gap(s) <= {2:.0f} mm "
+                u"were merged before callout selection.".format(
+                    deviation_item.get("wall_id", u"N/A"),
+                    merge_count,
+                    CLOSE_CLUSTER_MERGE_GAP_MM
+                )
+            )
 
         location = _project_marker_center(
             plan_view,
@@ -309,50 +670,98 @@ def _get_deviation_marker_items(plan_view, deviation_result):
             )
             continue
 
-        marker_item = {
-            "id": _get_preview_id(len(marker_items)),
-            "location": location,
-            "label": _create_deviation_label(deviation_item),
-            "severity": status,
-            "wall_id": deviation_item.get("wall_id", u"N/A"),
-            "avg_deviation_mm": deviation_item.get("avg_deviation_mm"),
-            "max_deviation_mm": deviation_item.get("max_deviation_mm"),
-            "p95_deviation_mm": deviation_item.get("p95_deviation_mm"),
-            "classification_deviation_mm": deviation_item.get(
-                "classification_deviation_mm"
-            ),
-            "classification_metric": deviation_item.get(
-                "classification_metric",
-                u"P75"
-            ),
-            "median_deviation_mm": deviation_item.get("median_deviation_mm"),
-            "p75_deviation_mm": deviation_item.get("p75_deviation_mm"),
-            "p90_deviation_mm": deviation_item.get("p90_deviation_mm"),
-            "raw_centerline_avg_mm": deviation_item.get("raw_centerline_avg_mm"),
-            "raw_centerline_max_mm": deviation_item.get("raw_centerline_max_mm"),
-            "raw_centerline_median_mm": deviation_item.get(
-                "raw_centerline_median_mm"
-            ),
-            "raw_centerline_p75_mm": deviation_item.get("raw_centerline_p75_mm"),
-            "raw_centerline_p90_mm": deviation_item.get("raw_centerline_p90_mm"),
-            "raw_centerline_p95_mm": deviation_item.get("raw_centerline_p95_mm"),
-            "corrected_avg_mm": deviation_item.get("corrected_avg_mm"),
-            "corrected_max_mm": deviation_item.get("corrected_max_mm"),
-            "corrected_median_mm": deviation_item.get("corrected_median_mm"),
-            "corrected_p75_mm": deviation_item.get("corrected_p75_mm"),
-            "corrected_p90_mm": deviation_item.get("corrected_p90_mm"),
-            "corrected_p95_mm": deviation_item.get("corrected_p95_mm"),
-            "wall_half_width_mm": deviation_item.get("wall_half_width_mm"),
-            "status": status,
-            "point_count": deviation_item.get("point_count", 0),
-            "candidate_point_count": deviation_item.get(
-                "candidate_point_count",
-                0
-            )
-        }
-        marker_items.append(marker_item)
+        for cluster in clusters:
+            if not hasattr(cluster, "get"):
+                continue
+            cluster_status = cluster.get("status", status)
+            if cluster_status not in (STATUS_REVIEW, STATUS_CRITICAL):
+                continue
+            marker_item = {
+                "id": u"",
+                "location": location,
+                "label": u"Wall {0} / Cluster {1} / P75 {2}mm / {3}".format(
+                    deviation_item.get("wall_id", u"N/A"),
+                    cluster.get("cluster_index", u"N/A"),
+                    _format_deviation_mm(cluster.get("p75_mm")),
+                    cluster_status
+                ),
+                "severity": cluster_status,
+                "wall": deviation_item.get("wall"),
+                "cluster": cluster,
+                "cluster_index": cluster.get("cluster_index"),
+                "cluster_count": deviation_item.get("cluster_count", 0),
+                "cluster_length_mm": cluster.get("length_mm"),
+                "cluster_point_count": cluster.get("point_count", 0),
+                "cluster_density_per_m": cluster.get("density_per_m"),
+                "wall_id": deviation_item.get("wall_id", u"N/A"),
+                "avg_deviation_mm": deviation_item.get("avg_deviation_mm"),
+                "max_deviation_mm": deviation_item.get("max_deviation_mm"),
+                "p95_deviation_mm": deviation_item.get("p95_deviation_mm"),
+                "classification_deviation_mm": cluster.get(
+                    "p75_mm",
+                    deviation_item.get("classification_deviation_mm")
+                ),
+                "classification_metric": u"Cluster P75",
+                "median_deviation_mm": deviation_item.get("median_deviation_mm"),
+                "p75_deviation_mm": deviation_item.get("p75_deviation_mm"),
+                "p90_deviation_mm": deviation_item.get("p90_deviation_mm"),
+                "raw_centerline_avg_mm": deviation_item.get("raw_centerline_avg_mm"),
+                "raw_centerline_max_mm": deviation_item.get("raw_centerline_max_mm"),
+                "raw_centerline_median_mm": deviation_item.get(
+                    "raw_centerline_median_mm"
+                ),
+                "raw_centerline_p75_mm": deviation_item.get("raw_centerline_p75_mm"),
+                "raw_centerline_p90_mm": deviation_item.get("raw_centerline_p90_mm"),
+                "raw_centerline_p95_mm": deviation_item.get("raw_centerline_p95_mm"),
+                "corrected_avg_mm": deviation_item.get("corrected_avg_mm"),
+                "corrected_max_mm": deviation_item.get("corrected_max_mm"),
+                "corrected_median_mm": deviation_item.get("corrected_median_mm"),
+                "corrected_p75_mm": deviation_item.get("corrected_p75_mm"),
+                "corrected_p90_mm": deviation_item.get("corrected_p90_mm"),
+                "corrected_p95_mm": deviation_item.get("corrected_p95_mm"),
+                "wall_half_width_mm": deviation_item.get("wall_half_width_mm"),
+                "status": cluster_status,
+                "point_count": deviation_item.get("point_count", 0),
+                "candidate_point_count": deviation_item.get(
+                    "candidate_point_count",
+                    0
+                )
+            }
+            marker_items.append(marker_item)
 
-    return marker_items, warnings
+    top_n_callouts = _get_top_n_callouts(deviation_result)
+    if marker_items and top_n_callouts > 0:
+        original_count = len(marker_items)
+        marker_items, overlap_skipped, top_n_skipped = (
+            _dedupe_and_limit_marker_items(
+                plan_view,
+                marker_items,
+                top_n_callouts
+            )
+        )
+        selection_summary["candidate_callout_count"] = original_count
+        selection_summary["overlap_skipped_callout_count"] = len(overlap_skipped)
+        selection_summary["top_n_skipped_callout_count"] = len(top_n_skipped)
+        selection_summary["overlap_skipped_callouts"] = overlap_skipped
+        if overlap_skipped:
+            warnings.append(
+                u"{0} lower-priority Review/Critical callout candidate(s) were "
+                u"skipped because their rectangles overlapped an already selected "
+                u"callout by at least {1:.0f}% of the smaller rectangle.".format(
+                    len(overlap_skipped),
+                    OVERLAP_SKIP_RATIO * 100.0
+                )
+            )
+        if top_n_skipped:
+            warnings.append(
+                u"Only the top {0} of {1} non-overlapping Review/Critical "
+                u"deviation clusters were converted to Plan View callouts.".format(
+                    len(marker_items),
+                    original_count
+                )
+            )
+
+    return marker_items, warnings, selection_summary
 
 
 def _get_selected_wall_locations(plan_view, selected_walls):
@@ -620,7 +1029,177 @@ def create_text_label(
             pass
 
 
-def _create_revision_cloud_outline(doc, plan_view, revision, center):
+def _clamp(value, minimum, maximum):
+    try:
+        numeric_value = float(value)
+    except Exception:
+        numeric_value = minimum
+    return max(minimum, min(numeric_value, maximum))
+
+
+def _get_wall_location_endpoints(wall):
+    try:
+        location_curve = wall.Location.Curve
+        if location_curve is not None:
+            return location_curve.GetEndPoint(0), location_curve.GetEndPoint(1)
+    except Exception:
+        pass
+    return None, None
+
+
+def _interpolate_point(start, end, parameter):
+    parameter = _clamp(parameter, 0.0, 1.0)
+    return XYZ(
+        start.X + ((end.X - start.X) * parameter),
+        start.Y + ((end.Y - start.Y) * parameter),
+        start.Z + ((end.Z - start.Z) * parameter)
+    )
+
+
+def _vector_length(vector):
+    try:
+        return vector.GetLength()
+    except Exception:
+        try:
+            return math.sqrt(
+                (vector.X * vector.X)
+                + (vector.Y * vector.Y)
+                + (vector.Z * vector.Z)
+            )
+        except Exception:
+            return 0.0
+
+
+def _safe_normalize(vector):
+    try:
+        if _vector_length(vector) <= 0.0:
+            return None
+        return vector.Normalize()
+    except Exception:
+        return None
+
+
+def _get_perpendicular_in_view(plan_view, direction):
+    try:
+        view_direction = plan_view.ViewDirection.Normalize()
+        perpendicular = view_direction.CrossProduct(direction)
+        normalized = _safe_normalize(perpendicular)
+        if normalized is not None:
+            return normalized
+    except Exception:
+        pass
+
+    try:
+        right, up = _get_view_basis(plan_view)
+        right_component = direction.DotProduct(right)
+        up_component = direction.DotProduct(up)
+        perpendicular = (
+            right.Multiply(-up_component)
+            .Add(up.Multiply(right_component))
+        )
+        return _safe_normalize(perpendicular)
+    except Exception:
+        return None
+
+
+def _get_cluster_outline_points(plan_view, marker_item):
+    if not hasattr(marker_item, "get"):
+        return None
+    cluster = marker_item.get("cluster")
+    wall = marker_item.get("wall")
+    if not hasattr(cluster, "get") or wall is None:
+        return None
+
+    wall_start, wall_end = _get_wall_location_endpoints(wall)
+    if wall_start is None or wall_end is None:
+        return None
+
+    projected_start = _project_to_view_plane(plan_view, wall_start)
+    projected_end = _project_to_view_plane(plan_view, wall_end)
+    wall_vector = projected_end.Subtract(projected_start)
+    wall_length = _vector_length(wall_vector)
+    if wall_length <= 0.0:
+        return None
+
+    pad_parameter = _mm_to_internal(
+        REVISION_CLOUD_CLUSTER_LENGTH_PADDING_MM
+    ) / wall_length
+    start_parameter = _clamp(
+        cluster.get("start_parameter", 0.0) - pad_parameter,
+        0.0,
+        1.0
+    )
+    end_parameter = _clamp(
+        cluster.get("end_parameter", 1.0) + pad_parameter,
+        0.0,
+        1.0
+    )
+    if end_parameter < start_parameter:
+        start_parameter, end_parameter = end_parameter, start_parameter
+
+    segment_start = _project_to_view_plane(
+        plan_view,
+        _interpolate_point(wall_start, wall_end, start_parameter)
+    )
+    segment_end = _project_to_view_plane(
+        plan_view,
+        _interpolate_point(wall_start, wall_end, end_parameter)
+    )
+    segment_direction = _safe_normalize(segment_end.Subtract(segment_start))
+    if segment_direction is None:
+        return None
+
+    perpendicular = _get_perpendicular_in_view(plan_view, segment_direction)
+    if perpendicular is None:
+        return None
+
+    half_width_mm = marker_item.get("wall_half_width_mm")
+    try:
+        half_width_mm = float(half_width_mm)
+    except Exception:
+        half_width_mm = REVISION_CLOUD_CLUSTER_SIDE_MARGIN_MM
+    half_width_ft = _mm_to_internal(
+        max(half_width_mm, 0.0) + REVISION_CLOUD_CLUSTER_SIDE_MARGIN_MM
+    )
+
+    upper_left = segment_start.Add(perpendicular.Multiply(half_width_ft))
+    lower_left = segment_start.Add(perpendicular.Multiply(-half_width_ft))
+    lower_right = segment_end.Add(perpendicular.Multiply(-half_width_ft))
+    upper_right = segment_end.Add(perpendicular.Multiply(half_width_ft))
+    return [upper_left, upper_right, lower_right, lower_left]
+
+
+def _create_cluster_revision_cloud_outline(doc, plan_view, revision, marker_item):
+    outline_points = _get_cluster_outline_points(plan_view, marker_item)
+    if not outline_points:
+        return None
+
+    curves = List[Curve]()
+    for index, start_point in enumerate(outline_points):
+        end_point = outline_points[(index + 1) % len(outline_points)]
+        curves.Add(Line.CreateBound(start_point, end_point))
+    return RevisionCloud.Create(doc, plan_view, revision.Id, curves)
+
+
+def _create_revision_cloud_outline(doc, plan_view, revision, center, marker_item=None):
+    requires_cluster_outline = (
+        hasattr(marker_item, "get")
+        and marker_item.get("cluster") is not None
+        and marker_item.get("wall") is not None
+    )
+    cluster_cloud = _create_cluster_revision_cloud_outline(
+        doc,
+        plan_view,
+        revision,
+        marker_item
+    )
+    if cluster_cloud is not None:
+        return cluster_cloud
+    if requires_cluster_outline:
+        raise ValueError(
+            "Cluster-based rectangular Revision Cloud outline could not be generated."
+        )
+
     right, up = _get_view_basis(plan_view)
     size = _mm_to_internal(REVISION_CLOUD_HALF_SIZE_MM)
     upper_left = _offset_point(center, right, up, -size, size)
@@ -644,7 +1223,8 @@ def _try_create_revision_cloud(
     center,
     revision,
     color,
-    line_weight
+    line_weight,
+    marker_item=None
 ):
     if revision is None:
         return None, u"Preview Revision was unavailable."
@@ -658,7 +1238,8 @@ def _try_create_revision_cloud(
             doc,
             plan_view,
             revision,
-            center
+            center,
+            marker_item
         )
         _apply_line_override(plan_view, revision_cloud, color, line_weight)
         status = subtransaction.Commit()
@@ -796,7 +1377,8 @@ def _create_marker_callout(
     label_text,
     severity,
     color,
-    line_weight
+    line_weight,
+    marker_item=None
 ):
     revision_cloud, cloud_error = _try_create_revision_cloud(
         doc,
@@ -804,7 +1386,8 @@ def _create_marker_callout(
         center,
         revision,
         color,
-        line_weight
+        line_weight,
+        marker_item
     )
     text_note, text_warning, text_error = _try_create_center_id(
         doc,
@@ -833,7 +1416,8 @@ def create_review_marker(
     revision,
     text_type_id,
     preview_id,
-    label_text=None
+    label_text=None,
+    marker_item=None
 ):
     """Create an isolated Review cloud with a centered alphabet ID."""
     return _create_marker_callout(
@@ -846,7 +1430,8 @@ def create_review_marker(
         label_text or REVIEW_LABEL,
         u"REVIEW",
         REVIEW_COLOR,
-        REVIEW_LINE_WEIGHT
+        REVIEW_LINE_WEIGHT,
+        marker_item
     )
 
 
@@ -857,7 +1442,8 @@ def create_critical_marker(
     revision,
     text_type_id,
     preview_id,
-    label_text=None
+    label_text=None,
+    marker_item=None
 ):
     """Create an isolated Critical cloud with a centered alphabet ID."""
     return _create_marker_callout(
@@ -870,7 +1456,8 @@ def create_critical_marker(
         label_text or CRITICAL_LABEL,
         u"CRITICAL",
         CRITICAL_COLOR,
-        CRITICAL_LINE_WEIGHT
+        CRITICAL_LINE_WEIGHT,
+        marker_item
     )
 
 
@@ -899,9 +1486,21 @@ def _create_plan_preview_result(requested):
         "review_count": 0,
         "critical_count": 0,
         "ok_count": 0,
+        "selected_wall_count": 0,
         "no_point_data_count": 0,
         "no_reliable_data_count": 0,
         "coordinate_mismatch_count": 0,
+        "skipped_wall_count": 0,
+        "skipped_by_process_limit_count": 0,
+        "max_process_wall_count": 0,
+        "top_n_callouts": 0,
+        "top_n_callout_basis": u"Critical first, then Review; P90/P75 descending",
+        "created_callout_count": 0,
+        "candidate_callout_count": 0,
+        "merged_cluster_count": 0,
+        "overlap_skipped_callout_count": 0,
+        "top_n_skipped_callout_count": 0,
+        "overlap_skipped_callouts": [],
         "target_wall_count": 0,
         "processed_wall_count": 0,
         "point_cloud_name": u"N/A",
@@ -976,6 +1575,11 @@ def _copy_wall_deviation_results(deviation_result):
             "rejected_outside_segment": row.get("rejected_outside_segment", 0),
             "rejected_noise": row.get("rejected_noise", 0),
             "rejected_extreme_noise": row.get("rejected_extreme_noise", 0),
+            "cluster_count": row.get("cluster_count", 0),
+            "cluster_length_mm": row.get("cluster_length_mm"),
+            "cluster_status": row.get("cluster_status", u"N/A"),
+            "deviation_clusters": row.get("deviation_clusters", []),
+            "primary_cluster": row.get("primary_cluster"),
             "status": row.get("status", u"N/A"),
             "message": row.get("message", u""),
             "skip_reason": row.get("skip_reason", u""),
@@ -989,6 +1593,7 @@ def _copy_wall_deviation_results(deviation_result):
 def _finalize_plan_preview_result(result):
     result["textnote_label_count"] = result.get("text_note_count", 0)
     result["textnote_leader_count"] = result.get("leader_count", 0)
+    result["created_callout_count"] = result.get("revision_cloud_count", 0)
     result["preview_created"] = bool(result.get("created", False))
     result["preview_warnings"] = _message_list(result.get("warnings"))
 
@@ -1001,6 +1606,8 @@ def _finalize_plan_preview_result(result):
     result["3d_preview_status"] = u"Disabled"
     if not isinstance(result.get("preview_id_mappings"), list):
         result["preview_id_mappings"] = []
+    if not isinstance(result.get("overlap_skipped_callouts"), list):
+        result["overlap_skipped_callouts"] = []
     return result
 
 
@@ -1029,8 +1636,19 @@ def create_plan_marker_preview(
             "sampling_failure_reason",
             u""
         )
+        result["selected_wall_count"] = deviation_result.get("selected_wall_count", 0)
         result["target_wall_count"] = deviation_result.get("target_wall_count", 0)
         result["processed_wall_count"] = deviation_result.get("processed_wall_count", 0)
+        result["skipped_wall_count"] = deviation_result.get("skipped_wall_count", 0)
+        result["skipped_by_process_limit_count"] = deviation_result.get(
+            "skipped_by_process_limit_count",
+            0
+        )
+        result["max_process_wall_count"] = deviation_result.get(
+            "max_process_wall_count",
+            0
+        )
+        result["top_n_callouts"] = deviation_result.get("top_n_callouts", 0)
         result["no_point_data_count"] = deviation_result.get("no_point_data_count", 0)
         result["no_reliable_data_count"] = deviation_result.get(
             "no_reliable_data_count",
@@ -1120,13 +1738,37 @@ def create_plan_marker_preview(
         )
         marker_items = []
         if hasattr(deviation_result, "get"):
-            marker_items, marker_warnings = _get_deviation_marker_items(
-                plan_view,
-                deviation_result
+            marker_items, marker_warnings, marker_selection_summary = (
+                _get_deviation_marker_items(
+                    plan_view,
+                    deviation_result
+                )
             )
             result["warnings"].extend(marker_warnings)
+            result["candidate_callout_count"] = marker_selection_summary.get(
+                "candidate_callout_count",
+                0
+            )
+            result["merged_cluster_count"] = marker_selection_summary.get(
+                "merged_cluster_count",
+                0
+            )
+            result["overlap_skipped_callout_count"] = (
+                marker_selection_summary.get("overlap_skipped_callout_count", 0)
+            )
+            result["top_n_skipped_callout_count"] = marker_selection_summary.get(
+                "top_n_skipped_callout_count",
+                0
+            )
+            result["overlap_skipped_callouts"] = marker_selection_summary.get(
+                "overlap_skipped_callouts",
+                []
+            )
             if not marker_items:
-                if preview_callouts_on_no_deviation_data:
+                if _should_create_fallback_preview(
+                    deviation_result,
+                    preview_callouts_on_no_deviation_data
+                ):
                     result["source_mode"] = u"fallback_preview"
                     result["preview_callouts_generated_because_no_deviation_data"] = True
                     result["preview_callout_reason"] = (
@@ -1157,7 +1799,9 @@ def create_plan_marker_preview(
                         })
                 else:
                     result["warnings"].append(
-                        u"No Review/Critical Wall deviation results required 2D callouts."
+                        u"No Review/Critical deviation cluster met the callout "
+                        u"criteria. No fallback preview callouts were generated "
+                        u"because real sampled Wall results were available."
                     )
         else:
             is_selected_walls = (
@@ -1193,6 +1837,11 @@ def create_plan_marker_preview(
                 })
     except Exception as ex:
         result["error"] = u"Plan preview placement failed: {0}".format(_to_text(ex))
+        return _finalize_plan_preview_result(result)
+
+    if not marker_items:
+        result["created"] = False
+        result["error"] = u""
         return _finalize_plan_preview_result(result)
 
     transaction = Transaction(doc, "Create Scan QC Plan Revision Cloud Preview")
@@ -1232,7 +1881,8 @@ def create_plan_marker_preview(
                     revision,
                     text_type_id,
                     preview_id,
-                    marker_item.get("label")
+                    marker_item.get("label"),
+                    marker_item
                 )
                 review_count += 1
             else:
@@ -1243,7 +1893,8 @@ def create_plan_marker_preview(
                     revision,
                     text_type_id,
                     preview_id,
-                    marker_item.get("label")
+                    marker_item.get("label"),
+                    marker_item
                 )
                 critical_count += 1
             revision_cloud = marker_result["revision_cloud"]
@@ -1272,6 +1923,11 @@ def create_plan_marker_preview(
                 "label": marker_result.get("label", u""),
                 "severity": marker_result.get("severity", u""),
                 "wall_id": marker_item.get("wall_id", u"N/A"),
+                "cluster_index": marker_item.get("cluster_index"),
+                "cluster_count": marker_item.get("cluster_count", 0),
+                "cluster_length_mm": marker_item.get("cluster_length_mm"),
+                "cluster_point_count": marker_item.get("cluster_point_count", 0),
+                "cluster_density_per_m": marker_item.get("cluster_density_per_m"),
                 "avg_deviation_mm": marker_item.get("avg_deviation_mm"),
                 "max_deviation_mm": marker_item.get("max_deviation_mm"),
                 "p95_deviation_mm": marker_item.get("p95_deviation_mm"),
@@ -1402,6 +2058,21 @@ def build_marker_preview_result(plan_preview=None, view3d_preview=None):
         "plan": plan_preview,
         "view3d": view3d_preview,
         "revision_cloud_count": plan_preview.get("revision_cloud_count", 0),
+        "created_callout_count": plan_preview.get("created_callout_count", 0),
+        "candidate_callout_count": plan_preview.get("candidate_callout_count", 0),
+        "merged_cluster_count": plan_preview.get("merged_cluster_count", 0),
+        "overlap_skipped_callout_count": plan_preview.get(
+            "overlap_skipped_callout_count",
+            0
+        ),
+        "top_n_skipped_callout_count": plan_preview.get(
+            "top_n_skipped_callout_count",
+            0
+        ),
+        "overlap_skipped_callouts": plan_preview.get(
+            "overlap_skipped_callouts",
+            []
+        ),
         "textnote_label_count": plan_preview.get("textnote_label_count", 0),
         "textnote_leader_count": plan_preview.get("textnote_leader_count", 0),
         "preview_id_mappings": plan_preview.get("preview_id_mappings", []),

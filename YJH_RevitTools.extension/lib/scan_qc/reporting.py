@@ -500,8 +500,18 @@ def _render_marker_preview(output, marker_preview_result):
                 u"Sampling Failure Reason",
                 plan_preview.get("sampling_failure_reason", u"None") or u"None"
             ],
+            [u"Selected Wall Count", plan_preview.get("selected_wall_count", 0)],
             [u"Target Wall Count", plan_preview.get("target_wall_count", 0)],
+            [
+                u"Max Process Walls",
+                plan_preview.get("max_process_wall_count", u"N/A")
+            ],
             [u"Processed Wall Count", plan_preview.get("processed_wall_count", 0)],
+            [u"Skipped Wall Count", plan_preview.get("skipped_wall_count", 0)],
+            [
+                u"Skipped By Process Limit",
+                plan_preview.get("skipped_by_process_limit_count", 0)
+            ],
             [u"No Point Data Count", plan_preview.get("no_point_data_count", 0)],
             [
                 u"Coordinate Mismatch Count",
@@ -523,8 +533,39 @@ def _render_marker_preview(output, marker_preview_result):
             [u"Review Count", plan_preview.get("review_count", 0)],
             [u"Critical Count", plan_preview.get("critical_count", 0)],
             [
+                u"Top N Callouts",
+                plan_preview.get("top_n_callouts", u"N/A")
+            ],
+            [
+                u"Top N Basis",
+                plan_preview.get(
+                    "top_n_callout_basis",
+                    u"Critical first, then Review; P90/P75 descending"
+                )
+            ],
+            [
+                u"Callout Candidate Count",
+                plan_preview.get("candidate_callout_count", 0)
+            ],
+            [
+                u"Merged Close Cluster Count",
+                plan_preview.get("merged_cluster_count", 0)
+            ],
+            [
+                u"Overlap Skipped Callout Count",
+                plan_preview.get("overlap_skipped_callout_count", 0)
+            ],
+            [
+                u"Top N Skipped Callout Count",
+                plan_preview.get("top_n_skipped_callout_count", 0)
+            ],
+            [
                 u"2D Target QC Plan View",
                 plan_preview.get("target_view_name", u"") or u"N/A"
+            ],
+            [
+                u"Created Callout Count",
+                plan_preview.get("created_callout_count", revision_cloud_count)
             ],
             [u"Revision Cloud Count", revision_cloud_count],
             [u"Center ID TextNote Count", textnote_label_count],
@@ -704,8 +745,11 @@ def _render_marker_preview(output, marker_preview_result):
             mapping_rows.append([
                 mapping.get("id", u"N/A"),
                 u"Wall {0}".format(mapping.get("wall_id", u"N/A")),
+                mapping.get("cluster_index", u"N/A"),
+                _format_mm_with_unit(mapping.get("cluster_length_mm")),
+                mapping.get("cluster_point_count", 0),
                 _format_mm_with_unit(mapping.get("avg_deviation_mm")),
-                _format_mm_with_unit(mapping.get("p75_deviation_mm")),
+                _format_mm_with_unit(mapping.get("classification_deviation_mm")),
                 _format_mm_with_unit(mapping.get("p90_deviation_mm")),
                 _format_mm_with_unit(mapping.get("p95_deviation_mm")),
                 _format_mm_with_unit(mapping.get("max_deviation_mm")),
@@ -735,8 +779,11 @@ def _render_marker_preview(output, marker_preview_result):
                 columns=[
                     u"ID",
                     u"Wall",
+                    u"Cluster",
+                    u"Cluster Length",
+                    u"Cluster Points",
                     u"Face Avg",
-                    u"Face P75",
+                    u"Cluster P75",
                     u"Face P90",
                     u"Face P95",
                     u"Face Max",
@@ -749,6 +796,39 @@ def _render_marker_preview(output, marker_preview_result):
                 ]
             )
 
+    overlap_skipped_callouts = plan_preview.get("overlap_skipped_callouts") or []
+    if not isinstance(overlap_skipped_callouts, (list, tuple)):
+        overlap_skipped_callouts = []
+    overlap_rows = []
+    for skipped_item in overlap_skipped_callouts:
+        if not hasattr(skipped_item, "get"):
+            continue
+        try:
+            overlap_percent = u"{0:.0f}%".format(
+                float(skipped_item.get("overlap_ratio", 0.0)) * 100.0
+            )
+        except Exception:
+            overlap_percent = u"N/A"
+        overlap_rows.append([
+            u"Wall {0}".format(skipped_item.get("wall_id", u"N/A")),
+            skipped_item.get("cluster_index", u"N/A"),
+            skipped_item.get("severity", u"N/A"),
+            overlap_percent,
+            skipped_item.get("skipped_reason", u"Overlap with selected callout")
+        ])
+    if overlap_rows:
+        output.print_md("#### Overlap-Skipped Callout Candidates")
+        output.print_table(
+            table_data=overlap_rows,
+            columns=[
+                u"Wall",
+                u"Cluster",
+                u"Severity",
+                u"Overlap",
+                u"Skipped Reason"
+            ]
+        )
+
     if not preview_only:
         review_id_by_wall = {}
         for mapping in preview_id_mappings:
@@ -756,7 +836,10 @@ def _render_marker_preview(output, marker_preview_result):
                 continue
             wall_id = mapping.get("wall_id")
             if wall_id not in (None, u"", u"N/A"):
-                review_id_by_wall[_to_text(wall_id)] = mapping.get("id", u"")
+                wall_key = _to_text(wall_id)
+                if wall_key not in review_id_by_wall:
+                    review_id_by_wall[wall_key] = []
+                review_id_by_wall[wall_key].append(mapping.get("id", u""))
 
         wall_result_rows = []
         wall_deviation_results = plan_preview.get("wall_deviation_results") or []
@@ -779,11 +862,14 @@ def _render_marker_preview(output, marker_preview_result):
                 _format_mm_with_unit(item.get("corrected_p90_mm")),
                 _format_mm_with_unit(item.get("corrected_p95_mm")),
                 _format_mm_with_unit(item.get("corrected_max_mm")),
+                item.get("cluster_count", 0),
+                _format_mm_with_unit(item.get("cluster_length_mm")),
+                item.get("cluster_status", u"N/A"),
                 item.get("status", u"N/A"),
                 item.get("classification_metric", u"P75"),
                 item.get("coordinate_mode", u"N/A"),
                 item.get("distance_sanity_check", u"N/A"),
-                review_id_by_wall.get(_to_text(wall_id), u""),
+                u", ".join(review_id_by_wall.get(_to_text(wall_id), [])),
                 item.get("skip_reason", item.get("message", u""))
             ])
         if wall_result_rows:
@@ -803,6 +889,9 @@ def _render_marker_preview(output, marker_preview_result):
                     u"Face P90",
                     u"Face P95",
                     u"Face Max",
+                    u"Cluster Count",
+                    u"Primary Cluster Length",
+                    u"Cluster Status",
                     u"Status",
                     u"Status Metric",
                     u"Coordinate Mode",

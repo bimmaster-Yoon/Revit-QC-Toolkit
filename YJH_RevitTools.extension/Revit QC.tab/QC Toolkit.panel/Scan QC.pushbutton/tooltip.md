@@ -12,4 +12,8 @@ Point Cloud 기반 Revit 모델 오차 검토
 
 현재 단계에서는 Standards 확인/설치, QC 작업 View, 2D Revision Cloud/TextNote Preview를 생성합니다.
 3D Preview 표현은 비활성화되어 있습니다.
-실제 편차 계산, PDF/CSV 생성, Point Cloud 색상 변경은 수행하지 않습니다.
+Source Plan View, Wall 대상, Point Cloud 선택을 기준으로 Scan QC 작업 View와 결과 표시 구조를 준비합니다.
+
+Point Cloud 샘플링 API가 사용 불가한 경우 Wall은 No Point Data로 보고하고 도구 흐름은 계속 진행됩니다.
+
+PDF/CSV 생성과 Point Cloud 색상 변경은 수행하지 않습니다.

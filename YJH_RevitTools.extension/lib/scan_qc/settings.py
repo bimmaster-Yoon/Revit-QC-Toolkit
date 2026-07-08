@@ -8,9 +8,9 @@ import os
 
 DEFAULT_SETTINGS = {
     "tolerance_mm": {
-        "ok_max": 10,
-        "review_max": 30,
-        "critical_min": 30
+        "ok_max": 30,
+        "review_max": 80,
+        "critical_min": 80
     },
     "view_templates": {
         "plan": u"VT_SCAN_QC_PLAN",
@@ -33,6 +33,8 @@ DEFAULT_SETTINGS = {
         "point_search_margin_mm": 300,
         "point_sample_spacing_mm": 50,
         "max_points_per_wall": 5000,
+        "max_process_walls": 50,
+        "top_n_callouts": 7,
         "max_active_level_walls": 20
     },
     "output": {
@@ -237,6 +239,14 @@ def get_deviation_options(settings):
         "max_points_per_wall": _safe_positive_int(
             deviation.get("max_points_per_wall"),
             defaults["max_points_per_wall"]
+        ),
+        "max_process_walls": _safe_positive_int(
+            deviation.get("max_process_walls"),
+            defaults["max_process_walls"]
+        ),
+        "top_n_callouts": _safe_positive_int(
+            deviation.get("top_n_callouts"),
+            defaults["top_n_callouts"]
         ),
         "max_active_level_walls": _safe_positive_int(
             deviation.get("max_active_level_walls"),

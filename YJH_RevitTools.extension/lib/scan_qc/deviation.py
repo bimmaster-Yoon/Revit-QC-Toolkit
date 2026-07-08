@@ -46,6 +46,7 @@ STATUS_CRITICAL = u"CRITICAL"
 STATUS_NO_POINT_DATA = u"No Point Data"
 STATUS_COORDINATE_MISMATCH = u"Coordinate Mismatch"
 STATUS_NO_RELIABLE_WALL_SURFACE_DATA = u"No Reliable Wall Surface Data"
+STATUS_SKIPPED = u"Skipped"
 POINT_CLOUD_SAMPLING_UNAVAILABLE = (
     u"Point Cloud sampling API unavailable or not implemented"
 )
@@ -53,16 +54,23 @@ POINT_CLOUD_FILTER_FACTORY_FULL_NAME = (
     u"Autodesk.Revit.DB.PointClouds.PointCloudFilterFactory"
 )
 FT_TO_MM = 304.8
-SELECTED_WALL_MVP_LIMIT = 10
+DEFAULT_MAX_PROCESS_WALLS = 50
+DEFAULT_TOP_N_CALLOUTS = 7
 MIN_AVERAGE_DISTANCE_FT = 0.05
 MAX_AVERAGE_DISTANCE_FT = 0.10
 MIN_POINTS_PER_WALL = 500
 MAX_POINTS_PER_WALL = 2000
 COORDINATE_MISMATCH_THRESHOLD_MM = 5000.0
 WALL_FACE_NOISE_MARGIN_MM = 300.0
+MIN_WALL_SEGMENT_LENGTH_MM = 300.0
 MIN_RELIABLE_CANDIDATE_POINTS = 20
 NOISE_OUTLIER_FLOOR_MM = 150.0
 CLASSIFICATION_PERCENTILE_LABEL = u"P75"
+CLUSTER_THRESHOLD_METRIC_LABEL = u"Cluster P75"
+CLUSTER_MAX_GAP_MM = 500.0
+MIN_DEVIATION_CLUSTER_POINTS = 8
+MIN_DEVIATION_CLUSTER_LENGTH_MM = 300.0
+MIN_DEVIATION_CLUSTER_DENSITY_PER_M = 8.0
 
 
 def _to_text(value):
@@ -226,14 +234,19 @@ def _create_result(selected_options):
         "point_cloud_id": selected_options.get("point_cloud_id", u"N/A"),
         "analysis_scope": selected_options.get("analysis_scope", u""),
         "analysis_scope_label": selected_options.get("analysis_scope_label", u""),
+        "selected_wall_count": 0,
         "target_wall_count": 0,
         "processed_wall_count": 0,
+        "skipped_wall_count": 0,
+        "skipped_by_process_limit_count": 0,
         "no_point_data_count": 0,
         "no_reliable_data_count": 0,
         "coordinate_mismatch_count": 0,
         "ok_count": 0,
         "review_count": 0,
         "critical_count": 0,
+        "max_process_wall_count": DEFAULT_MAX_PROCESS_WALLS,
+        "top_n_callouts": DEFAULT_TOP_N_CALLOUTS,
         "results": [],
         "warnings": [],
         "errors": [],
@@ -418,6 +431,20 @@ def _get_wall_line_segment_for_calculation(wall):
         )
 
 
+def _wall_segment_length_mm(start, end):
+    if start is None or end is None:
+        return None
+    try:
+        length_ft = math.sqrt(
+            math.pow(end.X - start.X, 2.0)
+            + math.pow(end.Y - start.Y, 2.0)
+            + math.pow(end.Z - start.Z, 2.0)
+        )
+        return _internal_to_mm(length_ft)
+    except Exception:
+        return None
+
+
 def _get_wall_type_width_ft(wall):
     try:
         wall_type = wall.WallType
@@ -486,6 +513,11 @@ def _create_no_point_result(wall, message):
         "rejected_outside_segment": 0,
         "rejected_noise": 0,
         "rejected_extreme_noise": 0,
+        "cluster_count": 0,
+        "deviation_clusters": [],
+        "primary_cluster": None,
+        "cluster_length_mm": None,
+        "cluster_status": u"N/A",
         "marker_center": _wall_marker_center(wall),
         "message": message,
         "skip_reason": message,
@@ -496,11 +528,19 @@ def _create_no_point_result(wall, message):
     }
 
 
+def _create_skipped_result(wall, message):
+    result = _create_no_point_result(wall, message)
+    result["status"] = STATUS_SKIPPED
+    result["sampling_status"] = STATUS_SKIPPED
+    return result
+
+
 def _create_coordinate_mismatch_result(wall, message, coordinate_result):
     if not isinstance(coordinate_result, dict):
         coordinate_result = {}
     selected_stats = coordinate_result.get("selected_stats") or {}
     classification_value = _get_classification_distance_mm(selected_stats)
+    clusters = selected_stats.get("deviation_clusters") or []
     return {
         "wall": wall,
         "wall_id": get_element_id_value(wall.Id),
@@ -540,6 +580,11 @@ def _create_coordinate_mismatch_result(wall, message, coordinate_result):
         ),
         "rejected_noise": selected_stats.get("rejected_noise", 0),
         "rejected_extreme_noise": selected_stats.get("rejected_extreme_noise", 0),
+        "cluster_count": len(clusters),
+        "deviation_clusters": clusters,
+        "primary_cluster": clusters[0] if clusters else None,
+        "cluster_length_mm": clusters[0].get("length_mm") if clusters else None,
+        "cluster_status": clusters[0].get("status") if clusters else u"N/A",
         "marker_center": _wall_marker_center(wall),
         "message": message,
         "skip_reason": message,
@@ -559,6 +604,7 @@ def _create_no_reliable_result(wall, message, coordinate_result):
     if not isinstance(coordinate_result, dict):
         coordinate_result = {}
     selected_stats = coordinate_result.get("selected_stats") or {}
+    clusters = selected_stats.get("deviation_clusters") or []
     return {
         "wall": wall,
         "wall_id": get_element_id_value(wall.Id),
@@ -600,6 +646,11 @@ def _create_no_reliable_result(wall, message, coordinate_result):
         ),
         "rejected_noise": selected_stats.get("rejected_noise", 0),
         "rejected_extreme_noise": selected_stats.get("rejected_extreme_noise", 0),
+        "cluster_count": len(clusters),
+        "deviation_clusters": clusters,
+        "primary_cluster": clusters[0] if clusters else None,
+        "cluster_length_mm": clusters[0].get("length_mm") if clusters else None,
+        "cluster_status": clusters[0].get("status") if clusters else u"N/A",
         "marker_center": _wall_marker_center(wall),
         "message": message,
         "skip_reason": message,
@@ -660,6 +711,28 @@ def _get_max_points_per_wall(options):
     if max_points > MAX_POINTS_PER_WALL:
         return MAX_POINTS_PER_WALL
     return max_points
+
+
+def _get_max_process_walls(options):
+    try:
+        max_process_walls = int(
+            options.get("max_process_walls", DEFAULT_MAX_PROCESS_WALLS)
+        )
+    except Exception:
+        max_process_walls = DEFAULT_MAX_PROCESS_WALLS
+    if max_process_walls <= 0:
+        return DEFAULT_MAX_PROCESS_WALLS
+    return max_process_walls
+
+
+def _get_top_n_callouts(options):
+    try:
+        top_n_callouts = int(options.get("top_n_callouts", DEFAULT_TOP_N_CALLOUTS))
+    except Exception:
+        top_n_callouts = DEFAULT_TOP_N_CALLOUTS
+    if top_n_callouts <= 0:
+        return DEFAULT_TOP_N_CALLOUTS
+    return top_n_callouts
 
 
 def _build_plane_list(minimum, maximum, inverted=False):
@@ -972,10 +1045,15 @@ def _calculate_wall_face_distance_values_mm(
 ):
     centerline_values_mm = []
     corrected_values_mm = []
+    distance_samples = []
     sampled_point_count = 0
     unreadable_distance_count = 0
     rejected_outside_segment = 0
     rejected_noise = 0
+    segment_length_ft = math.sqrt(
+        ((end.X - start.X) * (end.X - start.X))
+        + ((end.Y - start.Y) * (end.Y - start.Y))
+    )
     for point in points or []:
         sampled_point_count += 1
         distance_ft, projection_parameter = _distance_point_to_segment_2d_detail(
@@ -1000,10 +1078,19 @@ def _calculate_wall_face_distance_values_mm(
         if centerline_distance_mm is not None and corrected_distance_mm is not None:
             centerline_values_mm.append(centerline_distance_mm)
             corrected_values_mm.append(corrected_distance_mm)
+            projection_distance_ft = projection_parameter * segment_length_ft
+            distance_samples.append({
+                "projection_parameter": projection_parameter,
+                "projection_distance_ft": projection_distance_ft,
+                "projection_distance_mm": _internal_to_mm(projection_distance_ft),
+                "centerline_distance_mm": centerline_distance_mm,
+                "corrected_deviation_mm": corrected_distance_mm
+            })
 
     return {
         "centerline_values_mm": centerline_values_mm,
         "corrected_values_mm": corrected_values_mm,
+        "distance_samples": distance_samples,
         "sampled_point_count": sampled_point_count,
         "unreadable_distance_count": unreadable_distance_count,
         "candidate_point_count_before_outlier_filter": len(corrected_values_mm),
@@ -1051,6 +1138,32 @@ def _filter_extreme_noise_values(values_mm):
     )
 
 
+def _filter_extreme_noise_samples(samples):
+    if not samples:
+        return [], 0, None
+    values_mm = [
+        sample.get("corrected_deviation_mm")
+        for sample in samples
+        if hasattr(sample, "get")
+        and sample.get("corrected_deviation_mm") is not None
+    ]
+    _filtered_values, rejected_count, upper_fence_mm = (
+        _filter_extreme_noise_values(values_mm)
+    )
+    if upper_fence_mm is None:
+        return list(samples), 0, None
+
+    filtered_samples = [
+        sample for sample in samples
+        if hasattr(sample, "get")
+        and sample.get("corrected_deviation_mm") is not None
+        and sample.get("corrected_deviation_mm") <= upper_fence_mm
+    ]
+    if not filtered_samples:
+        return list(samples), 0, upper_fence_mm
+    return filtered_samples, rejected_count, upper_fence_mm
+
+
 def _average_mm(values_mm):
     if not values_mm:
         return None
@@ -1067,6 +1180,149 @@ def _get_classification_distance_mm(stats):
     if not hasattr(stats, "get"):
         return None
     return stats.get("p75_mm")
+
+
+def _cluster_sort_key(cluster):
+    if not hasattr(cluster, "get"):
+        return (0.0, 0, 0.0)
+    severity_rank = 2 if cluster.get("status") == STATUS_CRITICAL else 1
+    return (
+        -float(cluster.get("length_mm") or 0.0),
+        -severity_rank,
+        -int(cluster.get("point_count") or 0)
+    )
+
+
+def _summarize_cluster_samples(samples, tolerance, cluster_index):
+    if not samples:
+        return None
+
+    sorted_samples = sorted(
+        samples,
+        key=lambda sample: sample.get("projection_distance_mm") or 0.0
+    )
+    corrected_values_mm = [
+        sample.get("corrected_deviation_mm")
+        for sample in sorted_samples
+        if sample.get("corrected_deviation_mm") is not None
+    ]
+    if not corrected_values_mm:
+        return None
+
+    start_sample = sorted_samples[0]
+    end_sample = sorted_samples[-1]
+    start_distance_mm = start_sample.get("projection_distance_mm") or 0.0
+    end_distance_mm = end_sample.get("projection_distance_mm") or start_distance_mm
+    length_mm = max(0.0, end_distance_mm - start_distance_mm)
+    density_per_m = (
+        float(len(corrected_values_mm)) / max(length_mm / 1000.0, 0.001)
+        if length_mm > 0.0
+        else float(len(corrected_values_mm)) * 1000.0
+    )
+    cluster_p75_mm = _percentile_mm(corrected_values_mm, 75.0)
+    cluster_status = _classify_deviation(cluster_p75_mm, tolerance)
+    if cluster_status == STATUS_OK:
+        return None
+
+    return {
+        "cluster_index": cluster_index,
+        "status": cluster_status,
+        "point_count": len(corrected_values_mm),
+        "length_mm": length_mm,
+        "density_per_m": density_per_m,
+        "start_parameter": start_sample.get("projection_parameter", 0.0),
+        "end_parameter": end_sample.get("projection_parameter", 0.0),
+        "start_distance_mm": start_distance_mm,
+        "end_distance_mm": end_distance_mm,
+        "avg_mm": _average_mm(corrected_values_mm),
+        "median_mm": _percentile_mm(corrected_values_mm, 50.0),
+        "p75_mm": cluster_p75_mm,
+        "p90_mm": _percentile_mm(corrected_values_mm, 90.0),
+        "p95_mm": _percentile_mm(corrected_values_mm, 95.0),
+        "max_mm": _max_mm(corrected_values_mm)
+    }
+
+
+def _build_deviation_clusters(stats, tolerance):
+    if not hasattr(stats, "get"):
+        return [], u"No distance statistics were available."
+
+    samples = stats.get("distance_samples") or []
+    if not samples:
+        return [], u"No candidate point samples were available for clustering."
+
+    threshold_mm = tolerance.get("ok_max", 30.0)
+    issue_samples = [
+        sample for sample in samples
+        if hasattr(sample, "get")
+        and sample.get("corrected_deviation_mm") is not None
+        and sample.get("corrected_deviation_mm") > threshold_mm
+    ]
+    if not issue_samples:
+        return [], u"No corrected deviation samples exceeded OK Max threshold."
+
+    issue_samples = sorted(
+        issue_samples,
+        key=lambda sample: sample.get("projection_distance_mm") or 0.0
+    )
+    gap_mm = CLUSTER_MAX_GAP_MM
+    raw_clusters = []
+    current_cluster = []
+    previous_distance_mm = None
+    for sample in issue_samples:
+        current_distance_mm = sample.get("projection_distance_mm")
+        if current_distance_mm is None:
+            continue
+        if (
+            previous_distance_mm is not None
+            and current_cluster
+            and (current_distance_mm - previous_distance_mm) > gap_mm
+        ):
+            raw_clusters.append(current_cluster)
+            current_cluster = []
+        current_cluster.append(sample)
+        previous_distance_mm = current_distance_mm
+    if current_cluster:
+        raw_clusters.append(current_cluster)
+
+    valid_clusters = []
+    rejected_reasons = []
+    for raw_cluster in raw_clusters:
+        cluster = _summarize_cluster_samples(
+            raw_cluster,
+            tolerance,
+            len(valid_clusters) + 1
+        )
+        if cluster is None:
+            rejected_reasons.append(u"cluster status resolved to OK")
+            continue
+        if cluster["point_count"] < MIN_DEVIATION_CLUSTER_POINTS:
+            rejected_reasons.append(
+                u"{0} points".format(cluster["point_count"])
+            )
+            continue
+        if cluster["length_mm"] < MIN_DEVIATION_CLUSTER_LENGTH_MM:
+            rejected_reasons.append(
+                u"{0:.1f} mm length".format(cluster["length_mm"])
+            )
+            continue
+        if cluster["density_per_m"] < MIN_DEVIATION_CLUSTER_DENSITY_PER_M:
+            rejected_reasons.append(
+                u"{0:.1f} points/m".format(cluster["density_per_m"])
+            )
+            continue
+        cluster["cluster_index"] = len(valid_clusters) + 1
+        valid_clusters.append(cluster)
+
+    if valid_clusters:
+        return sorted(valid_clusters, key=_cluster_sort_key), u""
+
+    if rejected_reasons:
+        return [], (
+            u"No deviation cluster met minimum points/length/density thresholds "
+            u"({0})."
+        ).format(u"; ".join(rejected_reasons[:3]))
+    return [], u"No deviation cluster met minimum points/length/density thresholds."
 
 
 def _get_wall_surface_reliability_warning(stats):
@@ -1103,16 +1359,41 @@ def _get_wall_surface_reliability_warning(stats):
 def _summarize_wall_face_distances(distance_values):
     if not isinstance(distance_values, dict):
         distance_values = {}
-    corrected_values_before_filter_mm = (
-        distance_values.get("corrected_values_mm") or []
+    samples_before_filter = distance_values.get("distance_samples") or []
+    filtered_samples, rejected_extreme_noise, outlier_fence_mm = (
+        _filter_extreme_noise_samples(samples_before_filter)
     )
-    corrected_values_mm, rejected_extreme_noise, outlier_fence_mm = (
-        _filter_extreme_noise_values(corrected_values_before_filter_mm)
-    )
-    centerline_values_mm = distance_values.get("centerline_values_mm") or []
+    if filtered_samples:
+        corrected_values_before_filter_mm = [
+            sample.get("corrected_deviation_mm")
+            for sample in samples_before_filter
+            if hasattr(sample, "get")
+            and sample.get("corrected_deviation_mm") is not None
+        ]
+        corrected_values_mm = [
+            sample.get("corrected_deviation_mm")
+            for sample in filtered_samples
+            if hasattr(sample, "get")
+            and sample.get("corrected_deviation_mm") is not None
+        ]
+        centerline_values_mm = [
+            sample.get("centerline_distance_mm")
+            for sample in filtered_samples
+            if hasattr(sample, "get")
+            and sample.get("centerline_distance_mm") is not None
+        ]
+    else:
+        corrected_values_before_filter_mm = (
+            distance_values.get("corrected_values_mm") or []
+        )
+        corrected_values_mm, rejected_extreme_noise, outlier_fence_mm = (
+            _filter_extreme_noise_values(corrected_values_before_filter_mm)
+        )
+        centerline_values_mm = distance_values.get("centerline_values_mm") or []
     if not corrected_values_mm:
         return {
             "point_count": 0,
+            "distance_samples": [],
             "sampled_point_count": distance_values.get("sampled_point_count", 0),
             "candidate_point_count_before_outlier_filter": distance_values.get(
                 "candidate_point_count_before_outlier_filter",
@@ -1144,6 +1425,7 @@ def _summarize_wall_face_distances(distance_values):
         }
     return {
         "point_count": len(corrected_values_mm),
+        "distance_samples": filtered_samples,
         "sampled_point_count": distance_values.get("sampled_point_count", 0),
         "candidate_point_count_before_outlier_filter": distance_values.get(
             "candidate_point_count_before_outlier_filter",
@@ -1363,9 +1645,20 @@ def _classify_deviation(classification_deviation_mm, tolerance):
 def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
     start, end, line_error = _get_wall_line_segment_for_calculation(wall)
     if start is None or end is None:
-        return _create_no_point_result(
+        return _create_skipped_result(
             wall,
             line_error or u"Wall LocationCurve was unavailable for 2D deviation calculation."
+        )
+
+    wall_length_mm = _wall_segment_length_mm(start, end)
+    if wall_length_mm is not None and wall_length_mm < MIN_WALL_SEGMENT_LENGTH_MM:
+        return _create_skipped_result(
+            wall,
+            u"Wall skipped: LocationCurve length {0:.1f} mm is shorter than "
+            u"the {1:.0f} mm minimum for Scan QC deviation sampling.".format(
+                wall_length_mm,
+                MIN_WALL_SEGMENT_LENGTH_MM
+            )
         )
 
     raw_points, sampling_error = _sample_wall_points(
@@ -1432,9 +1725,29 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
             coordinate_result
         )
 
+    deviation_clusters, cluster_warning = _build_deviation_clusters(
+        selected_stats,
+        tolerance
+    )
+    selected_stats["deviation_clusters"] = deviation_clusters
+    selected_stats["cluster_count"] = len(deviation_clusters)
+    selected_stats["cluster_warning"] = cluster_warning
+
     avg_deviation_mm = selected_stats.get("avg_mm")
     max_deviation_mm = selected_stats.get("max_mm")
-    status = _classify_deviation(classification_deviation_mm, tolerance)
+    primary_cluster = deviation_clusters[0] if deviation_clusters else None
+    if primary_cluster:
+        status = primary_cluster.get("status", STATUS_REVIEW)
+        classification_deviation_mm = primary_cluster.get("p75_mm")
+        classification_metric = CLUSTER_THRESHOLD_METRIC_LABEL
+        skip_reason = u""
+    else:
+        status = STATUS_OK
+        classification_metric = CLASSIFICATION_PERCENTILE_LABEL
+        skip_reason = (
+            cluster_warning
+            or u"No contiguous deviation cluster met Review/Critical thresholds."
+        )
 
     return {
         "wall": wall,
@@ -1444,7 +1757,7 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
         "max_deviation_mm": max_deviation_mm,
         "p95_deviation_mm": selected_stats.get("p95_mm"),
         "classification_deviation_mm": classification_deviation_mm,
-        "classification_metric": CLASSIFICATION_PERCENTILE_LABEL,
+        "classification_metric": classification_metric,
         "median_deviation_mm": selected_stats.get("median_mm"),
         "p75_deviation_mm": selected_stats.get("p75_mm"),
         "p90_deviation_mm": selected_stats.get("p90_mm"),
@@ -1475,9 +1788,22 @@ def _calculate_wall_deviation(wall, point_cloud, sampling_context, tolerance):
         ),
         "rejected_noise": selected_stats.get("rejected_noise", 0),
         "rejected_extreme_noise": selected_stats.get("rejected_extreme_noise", 0),
+        "cluster_count": len(deviation_clusters),
+        "deviation_clusters": deviation_clusters,
+        "primary_cluster": primary_cluster,
+        "cluster_length_mm": (
+            primary_cluster.get("length_mm")
+            if primary_cluster
+            else None
+        ),
+        "cluster_status": (
+            primary_cluster.get("status")
+            if primary_cluster
+            else u"N/A"
+        ),
         "marker_center": _wall_marker_center(wall),
         "message": u"",
-        "skip_reason": u"",
+        "skip_reason": skip_reason,
         "sampling_status": u"Sampled",
         "coordinate_mode": coordinate_result.get("coordinate_mode", u"N/A"),
         "distance_sanity_check": coordinate_result.get(
@@ -1557,14 +1883,21 @@ def _append_count(result, wall_result):
         result["no_reliable_data_count"] += 1
     elif status == STATUS_COORDINATE_MISMATCH:
         result["coordinate_mismatch_count"] += 1
+    elif status == STATUS_SKIPPED:
+        pass
+
+    if status not in (STATUS_OK, STATUS_REVIEW, STATUS_CRITICAL):
+        result["skipped_wall_count"] += 1
 
 
 def _update_sampling_summary(result):
     sampled_count = 0
     mismatch_count = 0
     no_reliable_count = 0
+    skipped_count = 0
     no_point_messages = []
     no_reliable_messages = []
+    skipped_messages = []
     for row in result.get("results", []):
         if not hasattr(row, "get"):
             continue
@@ -1580,6 +1913,11 @@ def _update_sampling_summary(result):
                 no_reliable_messages.append(message)
         elif status == STATUS_COORDINATE_MISMATCH:
             mismatch_count += 1
+        elif status == STATUS_SKIPPED:
+            skipped_count += 1
+            message = row.get("message")
+            if message:
+                skipped_messages.append(message)
         else:
             sampled_count += 1
 
@@ -1620,6 +1958,13 @@ def _update_sampling_summary(result):
         else:
             result["point_cloud_sampling_status"] = u"No Point Data"
         result["sampling_failure_reason"] = first_message
+    elif skipped_count > 0:
+        result["point_cloud_sampling_status"] = STATUS_SKIPPED
+        result["sampling_failure_reason"] = (
+            skipped_messages[0]
+            if skipped_messages
+            else u"All candidate Walls were skipped before Point Cloud sampling."
+        )
 
 
 def _copy_first_wall_debug(result, wall_result):
@@ -1695,6 +2040,7 @@ def calculate_wall_deviations(
     if wall_collection_warning:
         result["warnings"].append(wall_collection_warning)
 
+    result["selected_wall_count"] = len(selected_walls or [])
     result["target_wall_count"] = len(target_walls)
     if not target_walls:
         result["warnings"].append(
@@ -1705,6 +2051,8 @@ def calculate_wall_deviations(
     options = get_deviation_options(settings)
     tolerance = _get_tolerance_options(selected_options, settings)
     result["tolerance_mm"] = tolerance
+    result["max_process_wall_count"] = _get_max_process_walls(options)
+    result["top_n_callouts"] = _get_top_n_callouts(options)
 
     analysis_scope = selected_options.get("analysis_scope")
     if analysis_scope != ANALYSIS_SCOPE_SELECTED_WALLS:
@@ -1728,11 +2076,20 @@ def calculate_wall_deviations(
         return result
 
     walls_to_process = target_walls
-    if len(walls_to_process) > SELECTED_WALL_MVP_LIMIT:
-        walls_to_process = walls_to_process[:SELECTED_WALL_MVP_LIMIT]
+    max_process_walls = result["max_process_wall_count"]
+    if len(walls_to_process) > max_process_walls:
+        skipped_by_limit = len(walls_to_process) - max_process_walls
+        walls_to_process = walls_to_process[:max_process_walls]
+        result["skipped_by_process_limit_count"] = skipped_by_limit
+        result["skipped_wall_count"] += skipped_by_limit
         result["warnings"].append(
-            u"Selected Walls MVP processed only the first {0} of {1} selected "
-            u"Walls.".format(SELECTED_WALL_MVP_LIMIT, len(target_walls))
+            u"Selected Walls processing was limited by Max Process Walls: "
+            u"processed first {0} of {1} selected Walls; {2} Walls were "
+            u"skipped by the processing limit.".format(
+                max_process_walls,
+                len(target_walls),
+                skipped_by_limit
+            )
         )
 
     sampling_context = _create_sampling_context(options, point_cloud)
@@ -1744,7 +2101,7 @@ def calculate_wall_deviations(
         result["warnings"].append(sampling_context.get("factory_error"))
 
     result["calculation_note"] = (
-        u"Selected Walls MVP used {0} ({1}) and "
+        u"Selected Walls processing used {0} ({1}) and "
         u"PointCloudInstance.GetPoints(filter, averageDistance={2:.3f} ft, "
         u"numPoints={3}). Raw distances are 2D to Wall LocationCurve centerline; "
         u"reported deviations subtract WallType.Width / 2 and use wall-face "
@@ -1753,9 +2110,12 @@ def calculate_wall_deviations(
         u"Extreme high-end candidate outliers are filtered before reporting. "
         u"Raw, GetTransform, and GetTotalTransform point coordinates were "
         u"compared; the lowest reliable corrected {5} mode was used. "
-        u"Review/Critical status uses corrected {5}; P90/P95/Max are output "
-        u"reference values only. Corrected {5} >= {6:.0f} mm is treated as "
-        u"Coordinate Mismatch."
+        u"Review/Critical callouts are created only when contiguous deviation "
+        u"clusters exceed OK Max and meet minimum count, length, and density "
+        u"thresholds ({6:.0f} mm max gap, {7:.0f} mm minimum length). "
+        u"Only the top {8} Review/Critical callouts should be created in the "
+        u"QC Plan View. Wall-level P90/P95/Max are output reference values "
+        u"only. Corrected {5} >= {9:.0f} mm is treated as Coordinate Mismatch."
     ).format(
         sampling_context.get("factory_type_name"),
         sampling_context.get("factory_resolution"),
@@ -1763,6 +2123,9 @@ def calculate_wall_deviations(
         sampling_context.get("max_points"),
         WALL_FACE_NOISE_MARGIN_MM,
         CLASSIFICATION_PERCENTILE_LABEL,
+        CLUSTER_MAX_GAP_MM,
+        MIN_DEVIATION_CLUSTER_LENGTH_MM,
+        result["top_n_callouts"],
         COORDINATE_MISMATCH_THRESHOLD_MM
     )
 
