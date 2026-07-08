@@ -29,11 +29,18 @@ DEFAULT_SETTINGS = {
     "view_creation": {
         "section_box_margin_mm": 1000
     },
+    "deviation": {
+        "point_search_margin_mm": 300,
+        "point_sample_spacing_mm": 50,
+        "max_points_per_wall": 5000,
+        "max_active_level_walls": 20
+    },
     "output": {
         "create_plan_view": True,
         "create_3d_view": True,
         "create_pdf_report": True,
-        "export_csv": False
+        "export_csv": False,
+        "create_preview_callouts_when_no_deviation_data": True
     }
 }
 
@@ -200,6 +207,44 @@ def get_view_creation_options(settings):
     }
 
 
+def _safe_positive_number(value, fallback):
+    safe_value = _safe_number(value, fallback)
+    if safe_value <= 0:
+        return fallback
+    return safe_value
+
+
+def _safe_positive_int(value, fallback):
+    safe_value = _safe_positive_number(value, fallback)
+    try:
+        return int(safe_value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def get_deviation_options(settings):
+    deviation = _get_section(settings, "deviation")
+    defaults = DEFAULT_SETTINGS["deviation"]
+    return {
+        "point_search_margin_mm": _safe_positive_number(
+            deviation.get("point_search_margin_mm"),
+            defaults["point_search_margin_mm"]
+        ),
+        "point_sample_spacing_mm": _safe_positive_number(
+            deviation.get("point_sample_spacing_mm"),
+            defaults["point_sample_spacing_mm"]
+        ),
+        "max_points_per_wall": _safe_positive_int(
+            deviation.get("max_points_per_wall"),
+            defaults["max_points_per_wall"]
+        ),
+        "max_active_level_walls": _safe_positive_int(
+            deviation.get("max_active_level_walls"),
+            defaults["max_active_level_walls"]
+        )
+    }
+
+
 def get_output_options(settings):
     output = _get_section(settings, "output")
     defaults = DEFAULT_SETTINGS["output"]
@@ -219,5 +264,9 @@ def get_output_options(settings):
         "export_csv": _safe_bool(
             output.get("export_csv"),
             defaults["export_csv"]
+        ),
+        "create_preview_callouts_when_no_deviation_data": _safe_bool(
+            output.get("create_preview_callouts_when_no_deviation_data"),
+            defaults["create_preview_callouts_when_no_deviation_data"]
         )
     }

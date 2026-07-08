@@ -111,29 +111,29 @@ def _apply_view_template(doc, view, template_name):
         return False, _to_text(ex)
 
 
-def _is_valid_active_plan_view(active_view):
-    if active_view is None or active_view.IsTemplate:
+def _is_valid_source_plan_view(source_plan_view):
+    if source_plan_view is None or source_plan_view.IsTemplate:
         return False
-    if active_view.ViewType not in PLAN_VIEW_TYPES:
+    if source_plan_view.ViewType not in PLAN_VIEW_TYPES:
         return False
     try:
-        return active_view.CanViewBeDuplicated(ViewDuplicateOption.Duplicate)
+        return source_plan_view.CanViewBeDuplicated(ViewDuplicateOption.Duplicate)
     except Exception:
         return False
 
 
 def create_scan_qc_plan_view(
     doc,
-    active_view,
+    source_plan_view,
     template_name,
     timestamp=None
 ):
-    """Duplicate a valid active plan without modifying the original view."""
+    """Duplicate a valid source plan without modifying the original view."""
     result = _create_view_result(True, template_name)
-    if not _is_valid_active_plan_view(active_view):
+    if not _is_valid_source_plan_view(source_plan_view):
         result["error"] = (
-            u"The active view must be a duplicable Floor, Ceiling, Engineering, "
-            u"or Area Plan view."
+            u"The Source Plan View must be a duplicable Floor, Ceiling, "
+            u"Engineering, or Area Plan view."
         )
         return result
 
@@ -148,7 +148,7 @@ def create_scan_qc_plan_view(
     try:
         transaction.Start()
         transaction_started = True
-        duplicated_view_id = active_view.Duplicate(ViewDuplicateOption.Duplicate)
+        duplicated_view_id = source_plan_view.Duplicate(ViewDuplicateOption.Duplicate)
         duplicated_view = doc.GetElement(duplicated_view_id)
         duplicated_view.Name = view_name
 
@@ -291,7 +291,7 @@ def create_scan_qc_3d_view(
 
 def create_requested_scan_qc_views(
     doc,
-    active_view,
+    source_plan_view,
     analysis_scope_result,
     selected_options,
     settings
@@ -307,7 +307,7 @@ def create_requested_scan_qc_views(
     if plan_requested:
         plan_result = create_scan_qc_plan_view(
             doc,
-            active_view,
+            source_plan_view,
             template_names["plan"],
             timestamp
         )

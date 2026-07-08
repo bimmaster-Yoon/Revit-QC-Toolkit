@@ -29,6 +29,12 @@ from scan_qc.analysis_scope import (
     ANALYSIS_SCOPE_SELECTED_WALLS,
     PLAN_VIEW_TYPES
 )
+from scan_qc.deviation import (
+    STATUS_COORDINATE_MISMATCH,
+    STATUS_CRITICAL,
+    STATUS_NO_POINT_DATA,
+    STATUS_REVIEW
+)
 REVIEW_LABEL = u"MAX 24mm / REVIEW"
 CRITICAL_LABEL = u"MAX 52mm / CRITICAL"
 PREVIEW_REVISION_DESCRIPTION = u"SCAN QC PREVIEW - NOT DEVIATION DATA"
@@ -42,6 +48,7 @@ PREVIEW_ID_TEXT_SIZE_MM = 5.0
 MIN_PREVIEW_SPACING_MM = 1000.0
 DEFAULT_PREVIEW_SPACING_MM = 1500.0
 MAX_PREVIEW_SPACING_MM = 3000.0
+PREVIEW_ID_SEQUENCE = u"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _to_text(value):
@@ -211,6 +218,93 @@ def _get_wall_midpoint(plan_view, wall):
         return _project_to_view_plane(plan_view, center)
     except Exception:
         return None
+
+
+def _format_deviation_mm(value):
+    if value is None:
+        return u"N/A"
+    try:
+        numeric_value = float(value)
+        if numeric_value.is_integer():
+            return u"{0}".format(int(numeric_value))
+        return u"{0:.1f}".format(numeric_value)
+    except (TypeError, ValueError):
+        return _to_text(value)
+
+
+def _project_marker_center(plan_view, marker_center):
+    if marker_center is None:
+        return None
+    try:
+        return _project_to_view_plane(plan_view, marker_center)
+    except Exception:
+        return None
+
+
+def _create_deviation_label(deviation_item):
+    return u"Wall {0} / P95 {1}mm / {2}".format(
+        deviation_item.get("wall_id", u"N/A"),
+        _format_deviation_mm(deviation_item.get("p95_deviation_mm")),
+        deviation_item.get("status", u"N/A")
+    )
+
+
+def _get_deviation_marker_items(plan_view, deviation_result):
+    if not hasattr(deviation_result, "get"):
+        return [], []
+
+    marker_items = []
+    warnings = []
+    results = deviation_result.get("results") or []
+    if not isinstance(results, (list, tuple)):
+        return marker_items, [u"Deviation result rows were not in a readable list format."]
+
+    for deviation_item in results:
+        if not hasattr(deviation_item, "get"):
+            continue
+        status = deviation_item.get("status")
+        if status not in (STATUS_REVIEW, STATUS_CRITICAL):
+            continue
+        if len(marker_items) >= len(PREVIEW_ID_SEQUENCE):
+            warnings.append(
+                u"Only the first {0} Review/Critical deviation items were annotated."
+                .format(len(PREVIEW_ID_SEQUENCE))
+            )
+            break
+
+        location = _project_marker_center(
+            plan_view,
+            deviation_item.get("marker_center")
+        )
+        if location is None:
+            wall = deviation_item.get("wall")
+            if wall is not None:
+                location = _get_wall_midpoint(plan_view, wall)
+        if location is None:
+            warnings.append(
+                u"Wall {0} was {1}, but no usable marker location was available."
+                .format(
+                    deviation_item.get("wall_id", u"N/A"),
+                    status
+                )
+            )
+            continue
+
+        marker_item = {
+            "id": PREVIEW_ID_SEQUENCE[len(marker_items)],
+            "location": location,
+            "label": _create_deviation_label(deviation_item),
+            "severity": status,
+            "wall_id": deviation_item.get("wall_id", u"N/A"),
+            "avg_deviation_mm": deviation_item.get("avg_deviation_mm"),
+            "max_deviation_mm": deviation_item.get("max_deviation_mm"),
+            "p95_deviation_mm": deviation_item.get("p95_deviation_mm"),
+            "status": status,
+            "point_count": deviation_item.get("point_count", 0)
+        }
+        marker_items.append(marker_item)
+
+    return marker_items, warnings
 
 
 def _get_selected_wall_locations(plan_view, selected_walls):
@@ -690,7 +784,8 @@ def create_review_marker(
     center,
     revision,
     text_type_id,
-    preview_id
+    preview_id,
+    label_text=None
 ):
     """Create an isolated Review cloud with a centered alphabet ID."""
     return _create_marker_callout(
@@ -700,7 +795,7 @@ def create_review_marker(
         revision,
         text_type_id,
         preview_id,
-        REVIEW_LABEL,
+        label_text or REVIEW_LABEL,
         u"REVIEW",
         REVIEW_COLOR,
         REVIEW_LINE_WEIGHT
@@ -713,7 +808,8 @@ def create_critical_marker(
     center,
     revision,
     text_type_id,
-    preview_id
+    preview_id,
+    label_text=None
 ):
     """Create an isolated Critical cloud with a centered alphabet ID."""
     return _create_marker_callout(
@@ -723,7 +819,7 @@ def create_critical_marker(
         revision,
         text_type_id,
         preview_id,
-        CRITICAL_LABEL,
+        label_text or CRITICAL_LABEL,
         u"CRITICAL",
         CRITICAL_COLOR,
         CRITICAL_LINE_WEIGHT
@@ -736,6 +832,7 @@ def _create_plan_preview_result(requested):
         "attempted": False,
         "created": False,
         "preview_only": True,
+        "source_mode": u"preview",
         "target_view_name": u"",
         "placement_source": u"Unavailable",
         "revision_description": PREVIEW_REVISION_DESCRIPTION,
@@ -753,6 +850,22 @@ def _create_plan_preview_result(requested):
         "3d_preview_status": u"Disabled",
         "review_count": 0,
         "critical_count": 0,
+        "ok_count": 0,
+        "no_point_data_count": 0,
+        "coordinate_mismatch_count": 0,
+        "target_wall_count": 0,
+        "processed_wall_count": 0,
+        "point_cloud_name": u"N/A",
+        "point_cloud_id": u"N/A",
+        "point_cloud_sampling_status": u"N/A",
+        "sampling_failure_reason": u"",
+        "calculation_note": u"",
+        "no_point_data_details": [],
+        "coordinate_mismatch_details": [],
+        "coordinate_debug": {},
+        "wall_deviation_results": [],
+        "preview_callouts_generated_because_no_deviation_data": False,
+        "preview_callout_reason": u"",
         "revision_cloud_failures": [],
         "text_note_failures": [],
         "leader_failures": [],
@@ -767,6 +880,31 @@ def _message_list(value):
     if isinstance(value, (list, tuple)):
         return [item for item in value if item]
     return [value]
+
+
+def _copy_wall_deviation_results(deviation_result):
+    copied_rows = []
+    if not hasattr(deviation_result, "get"):
+        return copied_rows
+    rows = deviation_result.get("results") or []
+    if not isinstance(rows, (list, tuple)):
+        return copied_rows
+    for row in rows:
+        if not hasattr(row, "get"):
+            continue
+        copied_rows.append({
+            "wall_id": row.get("wall_id", u"N/A"),
+            "point_count": row.get("point_count", 0),
+            "avg_deviation_mm": row.get("avg_deviation_mm"),
+            "max_deviation_mm": row.get("max_deviation_mm"),
+            "p95_deviation_mm": row.get("p95_deviation_mm"),
+            "status": row.get("status", u"N/A"),
+            "message": row.get("message", u""),
+            "coordinate_mode": row.get("coordinate_mode", u"N/A"),
+            "distance_sanity_check": row.get("distance_sanity_check", u"N/A"),
+            "coordinate_mode_stats": row.get("coordinate_mode_stats", [])
+        })
+    return copied_rows
 
 
 def _finalize_plan_preview_result(result):
@@ -792,10 +930,70 @@ def create_plan_marker_preview(
     plan_view,
     selected_walls,
     analysis_scope_result,
+    deviation_result=None,
+    preview_callouts_on_no_deviation_data=True,
     requested=True
 ):
     """Create Revision Clouds with centered alphabet IDs in a generated QC Plan View."""
     result = _create_plan_preview_result(requested)
+    if hasattr(deviation_result, "get"):
+        result["preview_only"] = False
+        result["source_mode"] = u"deviation"
+        result["placement_source"] = u"Wall Deviation Results"
+        result["point_cloud_name"] = deviation_result.get("point_cloud_name", u"N/A")
+        result["point_cloud_id"] = deviation_result.get("point_cloud_id", u"N/A")
+        result["point_cloud_sampling_status"] = deviation_result.get(
+            "point_cloud_sampling_status",
+            u"N/A"
+        )
+        result["sampling_failure_reason"] = deviation_result.get(
+            "sampling_failure_reason",
+            u""
+        )
+        result["target_wall_count"] = deviation_result.get("target_wall_count", 0)
+        result["processed_wall_count"] = deviation_result.get("processed_wall_count", 0)
+        result["no_point_data_count"] = deviation_result.get("no_point_data_count", 0)
+        result["coordinate_mismatch_count"] = deviation_result.get(
+            "coordinate_mismatch_count",
+            0
+        )
+        result["ok_count"] = deviation_result.get("ok_count", 0)
+        result["review_count"] = deviation_result.get("review_count", 0)
+        result["critical_count"] = deviation_result.get("critical_count", 0)
+        result["calculation_note"] = deviation_result.get("calculation_note", u"")
+        result["coordinate_debug"] = deviation_result.get("coordinate_debug", {})
+        result["wall_deviation_results"] = _copy_wall_deviation_results(
+            deviation_result
+        )
+        no_point_data_details = []
+        coordinate_mismatch_details = []
+        for deviation_item in deviation_result.get("results", []):
+            if (
+                hasattr(deviation_item, "get")
+                and deviation_item.get("status") == STATUS_NO_POINT_DATA
+            ):
+                no_point_data_details.append({
+                    "wall_id": deviation_item.get("wall_id", u"N/A"),
+                    "message": deviation_item.get("message", u"No Point Data")
+                })
+            elif (
+                hasattr(deviation_item, "get")
+                and deviation_item.get("status") == STATUS_COORDINATE_MISMATCH
+            ):
+                coordinate_mismatch_details.append({
+                    "wall_id": deviation_item.get("wall_id", u"N/A"),
+                    "message": deviation_item.get(
+                        "message",
+                        u"Coordinate Mismatch"
+                    )
+                })
+        result["no_point_data_details"] = no_point_data_details
+        result["coordinate_mismatch_details"] = coordinate_mismatch_details
+        for warning in deviation_result.get("warnings", []):
+            result["warnings"].append(warning)
+        for error in deviation_result.get("errors", []):
+            result["revision_cloud_failures"].append(error)
+
     if not requested:
         return _finalize_plan_preview_result(result)
     if plan_view is None:
@@ -823,22 +1021,79 @@ def create_plan_marker_preview(
         fallback_locations, placement_source, drawing_frame = (
             _get_plan_preview_locations(plan_view, analysis_scope_result)
         )
-        is_selected_walls = (
-            analysis_scope_result.get("analysis_scope")
-            == ANALYSIS_SCOPE_SELECTED_WALLS
-        )
-        locations = []
-        if is_selected_walls and selected_walls:
-            locations = _get_selected_wall_locations(plan_view, selected_walls)
-            result["placement_source"] = u"Selected Wall Midpoints"
-        if not locations:
-            locations = fallback_locations
-            result["placement_source"] = placement_source
-            if is_selected_walls:
-                result["warnings"].append(
-                    u"No usable selected Wall midpoint was available; Plan preview "
-                    u"callouts used the generated QC Plan View drawing area."
-                )
+        marker_items = []
+        if hasattr(deviation_result, "get"):
+            marker_items, marker_warnings = _get_deviation_marker_items(
+                plan_view,
+                deviation_result
+            )
+            result["warnings"].extend(marker_warnings)
+            if not marker_items:
+                if preview_callouts_on_no_deviation_data:
+                    result["source_mode"] = u"fallback_preview"
+                    result["preview_callouts_generated_because_no_deviation_data"] = True
+                    result["preview_callout_reason"] = (
+                        u"Preview callouts were generated because no real "
+                        u"deviation data was available."
+                    )
+                    result["warnings"].append(result["preview_callout_reason"])
+                    result["placement_source"] = placement_source
+                    for index, location in enumerate(fallback_locations[:3]):
+                        severity = STATUS_REVIEW if index % 2 == 0 else STATUS_CRITICAL
+                        label = (
+                            REVIEW_LABEL
+                            if severity == STATUS_REVIEW
+                            else CRITICAL_LABEL
+                        )
+                        marker_items.append({
+                            "id": PREVIEW_ID_SEQUENCE[index],
+                            "location": location,
+                            "label": label,
+                            "severity": severity,
+                            "wall_id": u"N/A",
+                            "avg_deviation_mm": None,
+                            "max_deviation_mm": None,
+                            "p95_deviation_mm": None,
+                            "status": severity,
+                            "point_count": 0,
+                            "is_fallback_preview": True
+                        })
+                else:
+                    result["warnings"].append(
+                        u"No Review/Critical Wall deviation results required 2D callouts."
+                    )
+        else:
+            is_selected_walls = (
+                analysis_scope_result.get("analysis_scope")
+                == ANALYSIS_SCOPE_SELECTED_WALLS
+            )
+            locations = []
+            if is_selected_walls and selected_walls:
+                locations = _get_selected_wall_locations(plan_view, selected_walls)
+                result["placement_source"] = u"Selected Wall Midpoints"
+            if not locations:
+                locations = fallback_locations
+                result["placement_source"] = placement_source
+                if is_selected_walls:
+                    result["warnings"].append(
+                        u"No usable selected Wall midpoint was available; Plan preview "
+                        u"callouts used the generated QC Plan View drawing area."
+                    )
+            for index, location in enumerate(locations[:3]):
+                severity = STATUS_REVIEW if index % 2 == 0 else STATUS_CRITICAL
+                label = REVIEW_LABEL if severity == STATUS_REVIEW else CRITICAL_LABEL
+                marker_items.append({
+                    "id": PREVIEW_ID_SEQUENCE[index],
+                    "location": location,
+                    "label": label,
+                    "severity": severity,
+                    "wall_id": u"N/A",
+                    "avg_deviation_mm": None,
+                    "max_deviation_mm": None,
+                    "p95_deviation_mm": None,
+                    "status": severity,
+                    "point_count": 0
+                })
     except Exception as ex:
         result["error"] = u"Plan preview placement failed: {0}".format(_to_text(ex))
         return _finalize_plan_preview_result(result)
@@ -869,16 +1124,18 @@ def create_plan_marker_preview(
         if text_warning:
             result["warnings"].append(text_warning)
 
-        for index, location in enumerate(locations[:3]):
-            preview_id = u"ABC"[index]
-            if index % 2 == 0:
+        for marker_item in marker_items:
+            preview_id = marker_item["id"]
+            location = marker_item["location"]
+            if marker_item.get("severity") == STATUS_REVIEW:
                 marker_result = create_review_marker(
                     doc,
                     plan_view,
                     location,
                     revision,
                     text_type_id,
-                    preview_id
+                    preview_id,
+                    marker_item.get("label")
                 )
                 review_count += 1
             else:
@@ -888,7 +1145,8 @@ def create_plan_marker_preview(
                     location,
                     revision,
                     text_type_id,
-                    preview_id
+                    preview_id,
+                    marker_item.get("label")
                 )
                 critical_count += 1
             revision_cloud = marker_result["revision_cloud"]
@@ -916,6 +1174,13 @@ def create_plan_marker_preview(
                 "id": marker_result.get("preview_id", preview_id),
                 "label": marker_result.get("label", u""),
                 "severity": marker_result.get("severity", u""),
+                "wall_id": marker_item.get("wall_id", u"N/A"),
+                "avg_deviation_mm": marker_item.get("avg_deviation_mm"),
+                "max_deviation_mm": marker_item.get("max_deviation_mm"),
+                "p95_deviation_mm": marker_item.get("p95_deviation_mm"),
+                "status": marker_item.get("status", u"N/A"),
+                "point_count": marker_item.get("point_count", 0),
+                "is_fallback_preview": marker_item.get("is_fallback_preview", False),
                 "revision_cloud_created": revision_cloud is not None,
                 "id_textnote_created": text_note is not None,
                 "id_centered_on_cloud": (
@@ -935,8 +1200,9 @@ def create_plan_marker_preview(
         result["revision_cloud_count"] = revision_cloud_count
         result["text_note_count"] = text_note_count
         result["leader_count"] = leader_count
-        result["review_count"] = review_count
-        result["critical_count"] = critical_count
+        if result.get("source_mode") == u"preview":
+            result["review_count"] = review_count
+            result["critical_count"] = critical_count
         result["preview_id_mappings"] = preview_id_mappings
         result["created"] = revision_cloud_count > 0 or text_note_count > 0
         if not result["created"]:
@@ -1006,7 +1272,7 @@ def build_marker_preview_result(plan_preview=None, view3d_preview=None):
     errors.extend(_message_list(view3d_preview.get("error")))
 
     return {
-        "preview_only": True,
+        "preview_only": bool(plan_preview.get("preview_only", True)),
         "plan": plan_preview,
         "view3d": view3d_preview,
         "revision_cloud_count": plan_preview.get("revision_cloud_count", 0),

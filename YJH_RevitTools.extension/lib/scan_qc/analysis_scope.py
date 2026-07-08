@@ -220,7 +220,7 @@ def _build_active_plan_level_scope(doc, active_view, result):
     level = _get_active_plan_level(doc, active_view)
     if level is None:
         result["error"] = (
-            u"Active Plan Level scope requires a valid plan-type active view "
+            u"Active Plan Level scope requires a valid Source Plan View "
             u"with an associated Level."
         )
         return result
@@ -232,7 +232,7 @@ def _build_active_plan_level_scope(doc, active_view, result):
 
     xy_points = _get_crop_box_xy_points(active_view)
     if xy_points:
-        result["section_box_source"] = u"Active Plan Crop Box"
+        result["section_box_source"] = u"Source Plan Crop Box"
     else:
         xy_points = _get_level_element_points(doc, level)
         if xy_points:
@@ -313,4 +313,3 @@ def build_analysis_scope_result(
 
     result["error"] = u"Unsupported Analysis Scope: {0}".format(analysis_scope)
     return result
-
