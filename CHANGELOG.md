@@ -39,7 +39,7 @@ Detailed historical development notes are kept in [docs/changelog.md](docs/chang
 
 ## Earlier Milestones
 
-- Added pyRevit QC Toolkit panel with Full QC, Quick QC, QC Settings, Open Last Report, and Help.
+- Added pyRevit QC Toolkit panel with DOC QC, QC Lite, QC Settings, Report, and Help.
 - Split Sheet, View, Parameter, grouping, reporting, and export logic into maintainable modules.
 - Added JSON rule preset support for default, interior, company-template, and custom configurations.
 - Added Compact Summary, Review Group Summary, and Review Item Samples in pyRevit Output.

@@ -2933,7 +2933,7 @@ def _write_latest_report_pointer(reports_root, pdf_path, result):
         write_latest_report_path(reports_root, pdf_path)
     except Exception as ex:
         result["warnings"].append(
-            u"Last Report pointer could not be updated: {0}".format(_to_text(ex))
+            u"Report pointer could not be updated: {0}".format(_to_text(ex))
         )
 
 

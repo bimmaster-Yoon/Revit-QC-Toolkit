@@ -143,11 +143,11 @@ def save_icon(image, button_name):
 
 def main():
     icon_map = [
-        ("Run Full QC.pushbutton", icon_full_qc),
-        ("Quick QC.pushbutton", icon_quick_qc),
-        ("QC Settings.pushbutton", icon_settings),
-        ("Last Report.pushbutton", icon_open_report),
-        ("Help.pushbutton", icon_help)
+        ("01 DOC QC.pushbutton", icon_full_qc),
+        ("02 QC Lite.pushbutton", icon_quick_qc),
+        ("04 QC Settings.pushbutton", icon_settings),
+        ("05 Report.pushbutton", icon_open_report),
+        ("06 Help.pushbutton", icon_help)
     ]
 
     for button_name, icon_factory in icon_map:

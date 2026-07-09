@@ -141,7 +141,7 @@ report_context = {
     "active_config": ACTIVE_CONFIG_PATH,
     "active_config_display": ACTIVE_CONFIG_DISPLAY,
     "active_preset": ACTIVE_PRESET_NAME,
-    "run_mode": u"Full QC",
+    "run_mode": u"DOC QC",
     "checked_parameter_elements": checked_parameter_elements,
     "review_group_count": len(issue_group_rows),
     "run_time": run_time,

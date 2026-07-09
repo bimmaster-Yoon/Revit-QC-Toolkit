@@ -1,307 +1,231 @@
-## Release
-
-Latest clean distribution release:
-
-- [Revit QC Toolkit v2.7.1](https://github.com/bimmaster-Yoon/Revit-QC-Toolkit/releases/tag/v2.7.1-clean-distribution)
-
 # Revit QC Toolkit
 
-Revit QC Toolkit is a pyRevit extension for Revit 2026 that helps review BIM model,
-drawing, and documentation quality from inside Revit. It started as a Sheet/View/
-Parameter QC tool and is now being expanded with a Scan QC workflow for point-cloud-
-based wall deviation review.
+Revit QC Toolkit은 Revit 2026 + pyRevit 환경에서 도면 문서 품질 검토와 Scan QC 검토 흐름을 지원하는 pyRevit Extension입니다.
 
-The toolkit is designed as a practical BIM/DX portfolio project: it focuses on
-repeatable model checks, readable review summaries, and report outputs that can be
-used during interior design documentation and coordination.
-
-> Current safety note: the existing Sheet QC, View QC, Parameter QC, summary, and
-> report export tools are read-only inspection workflows. Scan QC is in active
-> development and currently creates dedicated QC working views and 2D review
-> annotations only in generated `SCAN_QC_*` views.
+기존 Sheet / View / Parameter QC 기능을 기반으로, Point Cloud와 Revit Wall 모델의 정합성을 검토하는 Scan QC 기능을 단계적으로 확장하고 있습니다.
 
 ## Project Overview
 
-This repository contains a pyRevit extension named `YJH_RevitTools.extension`.
-The main ribbon location is:
+이 툴킷의 목적은 Revit 기반 인테리어 실시설계와 BIM 검토 과정에서 반복적으로 발생하는 도면 품질 점검, 뷰 정리, 파라미터 누락 확인, Scan-to-BIM 정합성 검토를 빠르게 수행하는 것입니다.
+
+주요 사용자는 Revit으로 도면화, 모델 검토, 협업 대응, 현장 기준 검토를 수행하는 BIM / DX 실무자입니다.
+
+## Installation / Setup
+
+1. 이 저장소를 로컬 PC에 복사하거나 Git clone 합니다.
+2. pyRevit에서 `YJH_RevitTools.extension` 폴더를 Extension 경로로 추가합니다.
+3. pyRevit Reload를 실행합니다.
+4. Revit 상단 Ribbon에서 `Revit QC` 탭을 확인합니다.
+5. 필요하면 `QC Settings`에서 Rule Set, 출력 옵션, Scan QC 설정을 확인합니다.
+
+권장 환경:
+
+- Revit 2026
+- pyRevit
+- Windows 환경
+- Styled Excel Report 사용 시 외부 CPython + `openpyxl`
+
+## Button Layout
+
+Revit QC 탭의 버튼 순서는 아래 기준으로 정리되어 있습니다.
+
+| 순서 | 버튼명 | 용도 |
+| --- | --- | --- |
+| 1 | DOC QC | Sheet / View / Parameter 전체 도면 QC 실행 |
+| 2 | QC Lite | 주요 항목 요약 검토 |
+| 3 | Scan QC | Point Cloud 기반 Wall Deviation / Revision Cloud ID / PDF Report |
+| 4 | QC Settings | Rule Set, 출력 옵션, Scan QC 설정 관리 |
+| 5 | Report | 마지막 QC Report 열기 |
+| 6 | Help | 사용 가이드 열기 |
+
+pyRevit Reload 후 다음과 같이 표시되는 것을 기준으로 합니다.
 
 ```text
-Revit QC > QC Toolkit
+DOC QC | QC Lite | Scan QC | QC Settings | Report | Help
 ```
-
-The toolkit supports two review tracks:
-
-1. **Model / drawing metadata QC**
-   - Sheet QC
-   - View QC
-   - Parameter QC
-   - Compact Summary
-   - Review Group Summary
-   - Review Item Samples
-   - Full/Summary CSV export
-   - Styled Excel report export
-
-2. **Scan QC, in progress**
-   - Source Plan View selection
-   - Point Cloud instance selection
-   - Selected Walls / Active Plan Level analysis scope
-   - QC Plan and QC 3D working view creation
-   - Standards validation and installation
-   - 2D Revision Cloud callouts with centered A/B/C IDs
-   - Early PointCloudInstance sampling and wall deviation debug
 
 ## Features
 
-### Sheet QC
+### DOC QC
 
-- Checks sheet number and sheet name state.
-- Reviews whether sheets contain placed views.
-- Reports sheet-related issues as individual review items and grouped summaries.
+Sheet QC, View QC, Parameter QC를 포함한 전체 도면 문서 QC를 실행합니다.
 
-### View QC
+- Sheet 번호 / 이름 / 상태 검토
+- View 배치 여부 및 관리 상태 검토
+- 필수 Parameter 누락 여부 확인
+- Review Group Summary / Review Item Samples 출력
+- Full / Summary CSV, Styled Excel Report 출력 지원
 
-- Checks view naming issues such as temporary keywords.
-- Reviews view scale, template assignment, and sheet placement state.
-- Helps identify unplaced or coordination-risk views before documentation delivery.
+### QC Lite
 
-### Parameter QC
+주요 항목만 빠르게 확인하는 요약 검토 모드입니다.
 
-- Uses JSON rule sets to define required parameters by category.
-- Checks missing or empty required parameter values.
-- Supports default, interior, company-template, and custom rule presets.
+- 빠른 사전 점검용
+- 주요 Review 항목 중심 출력
+- 전체 DOC QC 전 단계의 경량 검토에 적합
 
-### Compact Summary
+### Scan QC
 
-- Shows a short pyRevit Output summary for quick review.
-- Highlights checked sheet/view/parameter counts, total review items, grouped issues,
-  and QC status.
+Point Cloud 기반으로 Revit Wall 모델의 위치 오차를 검토하는 기능입니다.
 
-### Review Group Summary
+현재 Scan QC 흐름:
 
-- Groups repeated issues by category, item type, QC item, and issue message.
-- Keeps the output readable when many elements share the same issue.
-- Shows sample items without hiding the full detail export.
+1. Source Plan View 선택
+2. Analysis Point Cloud Source 선택
+3. Analysis Scope 선택
+   - Active Plan Level
+   - Selected Walls
+4. Target Wall Filter 적용
+   - Interior Walls Only
+   - New Construction Only
+   - Exclude Exterior Walls
+   - Only `SCAN_QC_TARGET = Yes`
+5. Scan QC Standards 자동 확인 / 설치
+6. QC Plan View / QC 3D View 생성
+7. Wall Deviation Sampling 수행
+8. Review / Critical 결과에 Revision Cloud ID 생성
+9. Scan QC 전용 PDF Report Sheet 생성
+10. PDF Report Export
 
-### Review Item Samples
+Scan QC는 원본 Active View를 직접 수정하지 않고, `SCAN_QC_PLAN_*`, `SCAN_QC_3D_*`, `SCAN_QC_REPORT_*` 형태의 작업용 View / Sheet를 생성합니다.
 
-- Displays key examples from the detected review items.
-- Keeps the on-screen report compact while preserving complete raw data in exports.
+### QC Settings
 
-### Full / Summary Report Export
+QC 기준과 출력 옵션을 관리합니다.
 
-- **Full CSV**: all individual review items.
-- **Summary CSV**: grouped issue summary for review meetings and tracking.
-- **Styled Excel Report**: formatted workbook with summary, review groups, key
-  samples, and full detail sheets.
-- Export can be disabled when the user only wants to inspect pyRevit Output.
+- Rule Set 선택
+- CSV / Excel 출력 옵션 확인
+- Styled Excel Report용 Python 경로 설정
+- Scan QC 기본 설정 확인
 
-### Scan QC - In Progress
+### Report
 
-Scan QC is being developed as a separate feature module under `lib/scan_qc`.
+마지막으로 생성된 QC Report를 엽니다.
 
-Current direction:
+### Help
 
-- 2D plan-view-based review workflow.
-- Scan QC setup dialog for source plan view, point cloud, analysis scope, tolerance,
-  and output options.
-- QC Plan View and QC 3D View generation from project standards.
-- Revision Cloud callouts in generated `SCAN_QC_PLAN_*` views.
-- Each Revision Cloud displays a centered uppercase ID such as `A`, `B`, or `C`.
-- Detailed callout information is shown in pyRevit Output and is planned to be
-  reused later in PDF/image reports or a sheet-side/bottom summary table.
-- Point cloud sampling is currently limited to a Selected Walls MVP path.
-- Wall deviation debug includes coordinate transform checks and wall-face correction.
+Revit QC Toolkit 사용 가이드를 별도 Help 창으로 표시합니다.
 
-Current Scan QC limitations:
+## Scan QC Details
 
-- Active Plan Level full-wall deviation is still a fallback/preview path.
-- PDF and CSV outputs for Scan QC are not implemented yet.
-- Point cloud points are not recolored.
-- 3D preview markers are disabled for now.
-- Deviation results should be treated as an MVP validation workflow until tested
-  against more project datasets.
+### Source Plan View
+
+Scan QC의 기준이 되는 평면 View입니다. Active View가 평면이 아니어도 UI에서 Source Plan View를 선택할 수 있습니다.
+
+### Analysis Point Cloud Source
+
+Wall Deviation Sampling에 사용할 Point Cloud Instance입니다. 선택한 Point Cloud를 기준으로 Revit Wall과의 거리 검토를 수행합니다.
+
+### Standards
+
+Scan QC는 `config/scan_qc_defaults.json` 설정과 `resources/standards/ScanQC_Standards.rvt` 기준 파일을 사용합니다.
+
+필요 기준:
+
+- `VT_SCAN_QC_PLAN`
+- `VT_SCAN_QC_3D`
+- `SCAN_QC_3D_BASE`
+
+기준 요소가 현재 프로젝트에 없고 Standards 파일에 있으면 Scan QC 실행 중 설치를 시도합니다.
+
+### Wall Deviation Sampling
+
+Selected Walls 모드에서는 선택한 Wall을 기준으로 Point Cloud 주변 점을 샘플링하고, Wall face 기준으로 보정된 deviation 값을 계산합니다.
+
+결과는 OK / Review / Critical로 분류되며, 도면에는 상위 Review / Critical 항목만 Revision Cloud ID로 표시됩니다.
+
+### Target Wall Filter
+
+Target Wall Filter는 검토 대상 벽을 줄이기 위한 선택 옵션입니다.
+
+- Interior / Exterior 기준은 도면상 위치가 아니라 Revit Wall Type Function 기준입니다.
+- New Construction 기준은 Phase Created / Demolished 정보를 사용합니다.
+- `SCAN_QC_TARGET = Yes`는 사용자 파라미터 기준입니다.
+- 여러 필터를 동시에 선택하면 AND 조건으로 적용됩니다.
+
+기본값은 전체 벽 검토를 위해 모두 OFF입니다.
+
+### Revision Cloud ID
+
+Review / Critical로 판정된 벽 위치에는 Revision Cloud가 생성되고, 중앙에 A, B, C 형식의 ID가 표시됩니다.
+
+상세 정보는 PDF Report의 Summary Panel에서 ID Mapping 표로 정리됩니다.
+
+### PDF Report
+
+Scan QC PDF Report는 전용 Clean Report Sheet를 생성해 도면 영역과 Summary Panel을 분리합니다.
+
+지원 항목:
+
+- A3 / A2 Landscape Paper Size 선택
+- PDF 저장 경로 선택
+- QC Plan View 자동 생성
+- Revision Cloud ID 기반 ID Mapping
+- Result Count / Tolerance / Project Source 정보 표시
 
 ## Current Status
 
-| Area | Status |
+| 기능 | 상태 |
 | --- | --- |
-| Sheet QC | Working |
-| View QC | Working |
-| Parameter QC | Working |
-| Compact Summary | Working |
-| Review Group Summary | Working |
-| Review Item Samples | Working |
-| Full CSV Export | Working |
-| Summary CSV Export | Working |
-| Styled Excel Report | Working with external CPython + `openpyxl` |
-| QC Settings / Rule Presets | Working |
-| Open Last Report | Working |
-| Scan QC UI | In progress |
-| Scan QC Standards Check / Install | In progress |
-| Scan QC Working Views | In progress |
-| Scan QC Revision Cloud ID Callouts | In progress |
-| Scan QC Point Cloud Deviation | MVP / debugging |
-| Scan QC PDF / Image Report | Planned |
-| Scan QC CSV Export | Planned |
+| Sheet QC | 사용 가능 |
+| View QC | 사용 가능 |
+| Parameter QC | 사용 가능 |
+| DOC QC | 사용 가능 |
+| QC Lite | 사용 가능 |
+| Styled Excel Report | 사용 가능 |
+| Scan QC Standards 설치 | 사용 가능 |
+| Scan QC QC Plan / 3D View 생성 | 사용 가능 |
+| Scan QC Wall Deviation Sampling | MVP 단계 |
+| Scan QC PDF Report | MVP 단계 |
+| Scan QC CSV Export | 향후 개발 |
+
+## Current Limitations
+
+- Point Cloud Sampling은 Revit API와 Point Cloud 데이터 상태에 영향을 받습니다.
+- Active Plan Level 전체 분석은 프로젝트 규모와 View Visibility 상태에 따라 추가 안정화가 필요합니다.
+- Scan QC 결과는 Wall face corrected distance와 P75 기반 분류를 사용합니다.
+- Point Cloud 자체 색상 변경은 수행하지 않습니다.
+- CSV 보조 출력은 아직 정식 구현 전입니다.
+- PDF/Image Report는 현재 MVP 레이아웃이며, 포트폴리오용 리포트 품질을 목표로 계속 개선 중입니다.
 
 ## Folder Structure
 
 ```text
-Revit_Codex_Automation/
-├─ README.md
-├─ CHANGELOG.md
-├─ requirements.txt
-├─ docs/
-│  ├─ INSTALL.md
-│  ├─ USAGE.md
-│  ├─ CONFIG.md
-│  ├─ workflow.md
-│  └─ changelog.md
-└─ YJH_RevitTools.extension/
-   ├─ Revit QC.tab/
-   │  └─ QC Toolkit.panel/
-   │     ├─ Run Full QC.pushbutton/
-   │     ├─ Quick QC.pushbutton/
-   │     ├─ QC Settings.pushbutton/
-   │     ├─ Open Last Report.pushbutton/
-   │     ├─ Help.pushbutton/
-   │     └─ Scan QC.pushbutton/
-   ├─ config/
-   │  ├─ qc_config_default.json
-   │  ├─ qc_config_interior.json
-   │  ├─ qc_config_company_template.json
-   │  └─ scan_qc_defaults.json
-   ├─ lib/
-   │  ├─ checks_sheet.py
-   │  ├─ checks_view.py
-   │  ├─ checks_parameter.py
-   │  ├─ exporters.py
-   │  ├─ grouping.py
-   │  ├─ report_ui.py
-   │  └─ scan_qc/
-   │     ├─ dialog.py
-   │     ├─ settings.py
-   │     ├─ standards.py
-   │     ├─ source_views.py
-   │     ├─ views.py
-   │     ├─ deviation.py
-   │     ├─ markers.py
-   │     └─ reporting.py
-   ├─ resources/
-   │  ├─ standards/
-   │  ├─ families/
-   │  └─ report_templates/
-   ├─ reports/
-   └─ tools/
-      └─ make_styled_xlsx.py
+YJH_RevitTools.extension/
+├─ Revit QC.tab/
+│  └─ QC Toolkit.panel/
+│     ├─ 01 DOC QC.pushbutton/
+│     ├─ 02 QC Lite.pushbutton/
+│     ├─ 03 Scan QC.pushbutton/
+│     ├─ 04 QC Settings.pushbutton/
+│     ├─ 05 Report.pushbutton/
+│     └─ 06 Help.pushbutton/
+├─ lib/
+│  └─ scan_qc/
+├─ config/
+├─ resources/
+│  └─ standards/
+└─ reports/
 ```
-
-## Installation / Setup
-
-Requirements:
-
-- Windows
-- Autodesk Revit 2026
-- pyRevit connected to Revit 2026
-- Git or GitHub Desktop
-- Optional: external CPython with `openpyxl` for Styled Excel Report export
-
-Basic setup:
-
-1. Clone the repository.
-2. Add the repository root folder to pyRevit custom extension directories.
-3. Reload pyRevit.
-4. Confirm the `Revit QC > QC Toolkit` panel appears in Revit.
-5. Optional: install Excel report dependencies.
-
-```powershell
-py -3 -m pip install -r requirements.txt
-```
-
-Then open `QC Settings` in Revit and select the Python executable that has
-`openpyxl` installed.
-
-More setup details are available in [docs/INSTALL.md](docs/INSTALL.md).
-
-## Usage
-
-### Run Full QC
-
-Use this for a full Sheet + View + Parameter review.
-
-1. Open a Revit 2026 model.
-2. Click `Run Full QC`.
-3. Choose export options.
-4. Review pyRevit Output and exported files.
-
-### Quick QC
-
-Use this for a faster Sheet + View review when Parameter QC is not needed.
-
-### QC Settings
-
-Use this to:
-
-- Set the external Python path for Styled Excel Report export.
-- Test `openpyxl` availability.
-- Select the active JSON rule preset.
-- Copy a preset into a custom rule set.
-
-### Scan QC
-
-Use this only as an in-progress validation workflow.
-
-Current Scan QC flow:
-
-1. Open a model with walls and Point Cloud instances.
-2. Click `Scan QC`.
-3. Select a Source Plan View.
-4. Select a Point Cloud instance.
-5. Choose `Active Plan Level` or `Selected Walls`.
-6. Confirm tolerance and output options.
-7. Run Scan QC.
-8. Review generated QC working views and pyRevit Output.
-
-For Selected Walls, the current MVP samples nearby point cloud points, compares
-coordinate modes, applies wall-face correction using wall thickness, and creates
-Revision Cloud ID callouts for Review/Critical results.
 
 ## Roadmap
 
-Planned improvements:
+우선순위 높은 개발 예정 항목:
 
-- Harden Scan QC point cloud sampling across more Revit/point-cloud datasets.
-- Improve wall-face deviation logic for non-linear walls and complex wall geometry.
-- Add Scan QC PDF or image report output.
-- Add Scan QC CSV export.
-- Add a sheet/report table that maps A/B/C Revision Cloud IDs to detailed findings.
-- Expand Scan QC standards automation with view templates and report assets.
-- Add more validation around point cloud coordinate systems and transforms.
-- Continue keeping Sheet/View/Parameter QC behavior stable while Scan QC evolves.
+1. PDF/Image Report 고도화
+2. CSV 보조 출력
+3. Active Plan Level 전체 분석 안정화
+4. Scan QC 결과 Sheet / 이미지 리포트 품질 개선
+5. 재료 면적 산출 Toolkit 추가
 
 ## Portfolio Notes
 
-This repository is intended to demonstrate practical Revit/BIM/DX implementation
-ability, not only UI mockups.
+이 프로젝트는 단순 자동화 예제가 아니라, Revit 기반 도면 QC와 Point Cloud 기반 모델 정합성 검토를 pyRevit Extension 형태로 구현한 BIM/DX 실무형 포트폴리오 프로젝트입니다.
 
-It highlights:
+포트폴리오에서 강조할 수 있는 지점:
 
-- pyRevit extension structure and deployment awareness.
-- Revit model and drawing QC logic.
-- Rule-set-driven parameter checking.
-- Report design for both compact review and full traceability.
-- Local settings management without committing user-specific paths.
-- Early point-cloud-based Scan QC exploration using Revit API constraints.
-- A workflow that connects BIM model checking to coordination-ready deliverables.
-
-No confidential company data, real project names, client names, pricing data, or
-internal project documents are required to use this repository.
-
-## Documentation
-
-- [Installation Guide](docs/INSTALL.md)
-- [Usage Guide](docs/USAGE.md)
-- [Configuration Guide](docs/CONFIG.md)
-- [Workflow Notes](docs/workflow.md)
-- [Detailed Historical Changelog](docs/changelog.md)
-- [Repository Changelog](CHANGELOG.md)
+- Revit 도면 문서 QC 체계화
+- 실무 검토 항목을 Rule Set으로 구조화
+- Point Cloud 기반 Scan-to-BIM 검토 흐름 구현
+- Revision Cloud ID와 PDF Report를 통한 검토 결과 전달
+- 기존 도면 QC 기능을 유지하면서 Scan QC를 별도 모듈로 확장

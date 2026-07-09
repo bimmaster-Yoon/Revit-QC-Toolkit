@@ -7,7 +7,7 @@
 3. QC Rules에서 Default, Interior, Company 또는 custom Rule Set 선택
 4. Use This로 `qc_config_local.json`의 `active_config` 갱신
 5. Rule Count에서 현재 기준 확인
-6. Run Full QC 또는 Quick QC 실행
+6. DOC QC 또는 QC Lite 실행
 7. 선택한 Rule Set 기준으로 read-only QC 수행
 8. Export Options에서 CSV / Styled Excel Report 출력
 
@@ -76,7 +76,7 @@ CSV는 원본 상세 데이터와 외부 호환을 위한 교환용 형식이며
 
 ## v2.4 Export Options
 
-1. Run Full QC 또는 Quick QC 실행
+1. DOC QC 또는 QC Lite 실행
 2. 마지막 저장 폴더 안내 확인
 3. Export 폴더 선택 및 쓰기 권한 검증
 4. Full CSV / Summary CSV / Styled XLSX Report 선택
@@ -85,7 +85,7 @@ CSV는 원본 상세 데이터와 외부 호환을 위한 교환용 형식이며
 7. pyRevit Output에 생성 경로 및 warning 표시
 8. 마지막 저장 폴더와 우선순위 결과 경로를 runtime 파일로 기록
 
-Quick QC 기본 선택은 Summary CSV와 Styled XLSX Report이며 Full CSV는 해제 상태입니다.
+QC Lite 기본 선택은 Summary CSV와 Styled XLSX Report이며 Full CSV는 해제 상태입니다.
 결과 경로 우선순위는 Styled XLSX, Summary CSV, Full CSV 순서입니다.
 `latest_export_folder.txt`와 `latest_report_path.txt`는 로컬 경로를 포함할 수 있어
 Git에서 제외합니다.
@@ -94,14 +94,14 @@ Git에서 제외합니다.
 
 | Button | Role | Export |
 | --- | --- | --- |
-| Run Full QC | Sheet + View + Parameter QC, Compact Summary, Review Group Summary | Full CSV + Summary CSV |
-| Quick QC | Sheet + View QC, 빠른 Compact Summary | Summary CSV |
+| DOC QC | Sheet + View + Parameter QC, Compact Summary, Review Group Summary | Full CSV + Summary CSV |
+| QC Lite | Sheet + View QC, 빠른 Compact Summary | Summary CSV |
 | QC Settings | 공통 JSON 설정 경로 표시 및 기본 편집기로 열기 | 없음 |
-| Open Last Report | 마지막 Summary CSV 또는 HTML Report 열기 | 없음 |
+| Report | 마지막 Summary CSV 또는 HTML Report 열기 | 없음 |
 | Help | 버튼별 사용법과 read-only 방식 안내 | 없음 |
 
 각 버튼은 자신의 `__file__`에서 extension 루트를 계산하고 공통 `lib` 및 `config`를
-참조합니다. Full QC와 Quick QC는 생성된 Summary CSV 경로를
+참조합니다. DOC QC와 QC Lite는 생성된 Summary CSV 경로를
 `reports/latest_report_path.txt`에 저장하며, 이 runtime 파일은 Git에서 제외합니다.
 
 ## v2.2 Module Flow
