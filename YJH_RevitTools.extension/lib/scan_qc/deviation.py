@@ -38,6 +38,7 @@ from scan_qc.analysis_scope import (
 )
 from scan_qc.collectors import get_element_id_value, get_point_cloud_name
 from scan_qc.settings import get_deviation_options, get_tolerance_mm
+from scan_qc.wall_filters import apply_target_wall_filters
 
 
 STATUS_OK = u"OK"
@@ -235,7 +236,16 @@ def _create_result(selected_options):
         "analysis_scope": selected_options.get("analysis_scope", u""),
         "analysis_scope_label": selected_options.get("analysis_scope_label", u""),
         "selected_wall_count": 0,
+        "active_plan_level_wall_count": 0,
+        "unfiltered_target_wall_count": 0,
+        "filtered_target_wall_count": 0,
         "target_wall_count": 0,
+        "target_wall_filter": {},
+        "target_wall_filter_summary": u"None",
+        "excluded_exterior_count": 0,
+        "excluded_existing_count": 0,
+        "excluded_demolished_count": 0,
+        "excluded_by_parameter_count": 0,
         "processed_wall_count": 0,
         "skipped_wall_count": 0,
         "skipped_by_process_limit_count": 0,
@@ -340,26 +350,66 @@ def _collect_active_level_walls(doc, active_view, max_wall_count):
         )
 
     walls = []
+    collection_warning = u""
     try:
-        all_walls = (
-            FilteredElementCollector(doc)
+        view_walls = (
+            FilteredElementCollector(doc, active_view.Id)
             .OfClass(Wall)
             .WhereElementIsNotElementType()
             .ToElements()
         )
-        for wall in all_walls:
-            if _element_is_on_level(wall, level):
+        for wall in view_walls:
+            if not _element_is_on_level(wall, level):
+                continue
+            try:
+                if wall.IsHidden(active_view):
+                    continue
+            except Exception:
+                pass
+            walls.append(wall)
+    except Exception as view_ex:
+        try:
+            all_walls = (
+                FilteredElementCollector(doc)
+                .OfClass(Wall)
+                .WhereElementIsNotElementType()
+                .ToElements()
+            )
+            for wall in all_walls:
+                if not _element_is_on_level(wall, level):
+                    continue
+                try:
+                    bounding_box = wall.get_BoundingBox(active_view)
+                    if bounding_box is None:
+                        continue
+                except Exception:
+                    pass
                 walls.append(wall)
-    except Exception as ex:
-        return [], u"Active Level Wall collection failed: {0}".format(_to_text(ex))
+            if walls:
+                collection_warning = (
+                    u"Source Plan View visible Wall collector failed; "
+                    u"fallback used Level + view bounding box filtering. "
+                    u"Collector error: {0}"
+                ).format(_to_text(view_ex))
+        except Exception as fallback_ex:
+            return [], (
+                u"Source Plan View visible Wall collection failed: {0}; "
+                u"fallback failed: {1}"
+            ).format(_to_text(view_ex), _to_text(fallback_ex))
 
     if max_wall_count > 0 and len(walls) > max_wall_count:
-        return walls[:max_wall_count], (
-            u"Active Plan Level scope found {0} Walls; MVP fallback processing "
+        limit_warning = (
+            u"Active Plan Level Source Plan View scope found {0} visible Walls; "
+            u"processing "
             u"was limited to the first {1} Walls."
         ).format(len(walls), max_wall_count)
+        if collection_warning:
+            limit_warning = u"{0} {1}".format(collection_warning, limit_warning)
+        return walls[:max_wall_count], (
+            limit_warning
+        )
 
-    return walls, u""
+    return walls, collection_warning
 
 
 def collect_target_walls(doc, active_view, selected_walls, selected_options, settings):
@@ -2041,39 +2091,60 @@ def calculate_wall_deviations(
         result["warnings"].append(wall_collection_warning)
 
     result["selected_wall_count"] = len(selected_walls or [])
+    result["unfiltered_target_wall_count"] = len(target_walls)
+    analysis_scope = selected_options.get("analysis_scope")
+    if analysis_scope == ANALYSIS_SCOPE_ACTIVE_PLAN_LEVEL:
+        result["active_plan_level_wall_count"] = len(target_walls)
+
+    target_walls, filter_result = apply_target_wall_filters(
+        target_walls,
+        selected_options,
+        settings,
+        doc
+    )
+    result["target_wall_filter"] = filter_result
+    result["target_wall_filter_summary"] = filter_result.get(
+        "target_wall_filter_summary",
+        u"None"
+    )
+    result["filtered_target_wall_count"] = filter_result.get(
+        "filtered_target_wall_count",
+        len(target_walls)
+    )
     result["target_wall_count"] = len(target_walls)
+    result["excluded_exterior_count"] = filter_result.get(
+        "excluded_exterior_count",
+        0
+    )
+    result["excluded_existing_count"] = filter_result.get(
+        "excluded_existing_count",
+        0
+    )
+    result["excluded_demolished_count"] = filter_result.get(
+        "excluded_demolished_count",
+        0
+    )
+    result["excluded_by_parameter_count"] = filter_result.get(
+        "excluded_by_parameter_count",
+        0
+    )
+    for warning in filter_result.get("warnings", []):
+        if warning:
+            result["warnings"].append(warning)
+
     if not target_walls:
         result["warnings"].append(
-            u"No target Walls were available for deviation calculation."
+            u"No target Walls remained after Scan QC target wall filtering."
         )
         return result
 
     options = get_deviation_options(settings)
+    if selected_options.get("top_n_callouts") is not None:
+        options["top_n_callouts"] = selected_options.get("top_n_callouts")
     tolerance = _get_tolerance_options(selected_options, settings)
     result["tolerance_mm"] = tolerance
     result["max_process_wall_count"] = _get_max_process_walls(options)
     result["top_n_callouts"] = _get_top_n_callouts(options)
-
-    analysis_scope = selected_options.get("analysis_scope")
-    if analysis_scope != ANALYSIS_SCOPE_SELECTED_WALLS:
-        result["point_cloud_sampling_status"] = u"Fallback"
-        result["sampling_failure_reason"] = (
-            u"Active Plan Level full-wall Point Cloud deviation is not enabled "
-            u"in this MVP. Preview fallback remains available."
-        )
-        result["calculation_note"] = (
-            u"Active Plan Level deviation remains in fallback mode for this MVP. "
-            u"Use Selected Walls to run real PointCloudInstance.GetPoints sampling."
-        )
-        for wall in target_walls:
-            wall_result = _create_no_point_result(
-                wall,
-                result["sampling_failure_reason"]
-            )
-            result["results"].append(wall_result)
-            result["processed_wall_count"] += 1
-            result["no_point_data_count"] += 1
-        return result
 
     walls_to_process = target_walls
     max_process_walls = result["max_process_wall_count"]
@@ -2083,9 +2154,10 @@ def calculate_wall_deviations(
         result["skipped_by_process_limit_count"] = skipped_by_limit
         result["skipped_wall_count"] += skipped_by_limit
         result["warnings"].append(
-            u"Selected Walls processing was limited by Max Process Walls: "
-            u"processed first {0} of {1} selected Walls; {2} Walls were "
+            u"{0} processing was limited by Max Process Walls: "
+            u"processed first {1} of {2} target Walls; {3} Walls were "
             u"skipped by the processing limit.".format(
+                selected_options.get("analysis_scope_label", u"Scan QC"),
                 max_process_walls,
                 len(target_walls),
                 skipped_by_limit
@@ -2101,22 +2173,23 @@ def calculate_wall_deviations(
         result["warnings"].append(sampling_context.get("factory_error"))
 
     result["calculation_note"] = (
-        u"Selected Walls processing used {0} ({1}) and "
-        u"PointCloudInstance.GetPoints(filter, averageDistance={2:.3f} ft, "
-        u"numPoints={3}). Raw distances are 2D to Wall LocationCurve centerline; "
+        u"Scan QC {0} processing used {1} ({2}) and "
+        u"PointCloudInstance.GetPoints(filter, averageDistance={3:.3f} ft, "
+        u"numPoints={4}). Raw distances are 2D to Wall LocationCurve centerline; "
         u"reported deviations subtract WallType.Width / 2 and use wall-face "
         u"corrected values. Candidate points must project within the Wall line "
-        u"segment and be within wall half width + {4:.0f} mm. "
+        u"segment and be within wall half width + {5:.0f} mm. "
         u"Extreme high-end candidate outliers are filtered before reporting. "
         u"Raw, GetTransform, and GetTotalTransform point coordinates were "
-        u"compared; the lowest reliable corrected {5} mode was used. "
+        u"compared; the lowest reliable corrected {6} mode was used. "
         u"Review/Critical callouts are created only when contiguous deviation "
         u"clusters exceed OK Max and meet minimum count, length, and density "
-        u"thresholds ({6:.0f} mm max gap, {7:.0f} mm minimum length). "
-        u"Only the top {8} Review/Critical callouts should be created in the "
+        u"thresholds ({7:.0f} mm max gap, {8:.0f} mm minimum length). "
+        u"Only the top {9} Review/Critical callouts should be created in the "
         u"QC Plan View. Wall-level P90/P95/Max are output reference values "
-        u"only. Corrected {5} >= {9:.0f} mm is treated as Coordinate Mismatch."
+        u"only. Corrected {6} >= {10:.0f} mm is treated as Coordinate Mismatch."
     ).format(
+        selected_options.get("analysis_scope_label", u"Analysis Scope"),
         sampling_context.get("factory_type_name"),
         sampling_context.get("factory_resolution"),
         sampling_context.get("average_distance_ft"),

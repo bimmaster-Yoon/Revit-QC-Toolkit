@@ -37,12 +37,24 @@ DEFAULT_SETTINGS = {
         "top_n_callouts": 7,
         "max_active_level_walls": 20
     },
+    "target_wall_filter": {
+        "interior_walls_only": False,
+        "new_construction_only": False,
+        "exclude_exterior_walls": False,
+        "only_scan_qc_target_yes": False
+    },
+    "report": {
+        "paper_size": u"A3 Landscape",
+        "output_folder": u"reports/scan_qc",
+        "last_pdf_folder": u"",
+        "export_image": False
+    },
     "output": {
         "create_plan_view": True,
         "create_3d_view": True,
-        "create_pdf_report": True,
+        "create_pdf_report": False,
         "export_csv": False,
-        "create_preview_callouts_when_no_deviation_data": True
+        "create_preview_callouts_when_no_deviation_data": False
     }
 }
 
@@ -253,6 +265,115 @@ def get_deviation_options(settings):
             defaults["max_active_level_walls"]
         )
     }
+
+
+def get_target_wall_filter_defaults(settings):
+    target_wall_filter = _get_section(settings, "target_wall_filter")
+    defaults = DEFAULT_SETTINGS["target_wall_filter"]
+    return {
+        "interior_walls_only": _safe_bool(
+            target_wall_filter.get("interior_walls_only"),
+            defaults["interior_walls_only"]
+        ),
+        "new_construction_only": _safe_bool(
+            target_wall_filter.get("new_construction_only"),
+            defaults["new_construction_only"]
+        ),
+        "exclude_exterior_walls": _safe_bool(
+            target_wall_filter.get("exclude_exterior_walls"),
+            defaults["exclude_exterior_walls"]
+        ),
+        "only_scan_qc_target_yes": _safe_bool(
+            target_wall_filter.get("only_scan_qc_target_yes"),
+            defaults["only_scan_qc_target_yes"]
+        )
+    }
+
+
+def get_report_options(settings):
+    report = _get_section(settings, "report")
+    defaults = DEFAULT_SETTINGS["report"]
+    paper_size = _safe_text(
+        report.get("paper_size"),
+        defaults["paper_size"]
+    )
+    if paper_size not in (u"A3 Landscape", u"A2 Landscape"):
+        paper_size = defaults["paper_size"]
+
+    output_folder = _safe_text(
+        report.get("output_folder"),
+        defaults["output_folder"]
+    )
+
+    if os.path.isabs(output_folder):
+        output_folder = defaults["output_folder"]
+
+    normalized_output_folder = os.path.normpath(output_folder)
+    if (
+        normalized_output_folder == os.pardir
+        or normalized_output_folder.startswith(os.pardir + os.sep)
+    ):
+        normalized_output_folder = defaults["output_folder"]
+
+    return {
+        "paper_size": paper_size,
+        "output_folder": normalized_output_folder,
+        "last_pdf_folder": _safe_text(
+            report.get("last_pdf_folder"),
+            defaults["last_pdf_folder"]
+        ),
+        "export_image": _safe_bool(
+            report.get("export_image"),
+            defaults["export_image"]
+        )
+    }
+
+
+def get_report_output_folder(settings):
+    report_options = get_report_options(settings)
+    return os.path.abspath(
+        os.path.join(get_extension_dir(), report_options["output_folder"])
+    )
+
+
+def get_report_state_path(settings):
+    return os.path.join(
+        get_report_output_folder(settings),
+        "scan_qc_report_state.json"
+    )
+
+
+def load_report_state(settings):
+    state_path = get_report_state_path(settings)
+    try:
+        with io.open(state_path, "r", encoding="utf-8-sig") as state_file:
+            state = json.load(state_file)
+        if isinstance(state, dict):
+            return state
+    except Exception:
+        pass
+    return {
+        "last_pdf_folder": get_report_options(settings).get("last_pdf_folder", u"")
+    }
+
+
+def save_report_state(settings, state):
+    if not isinstance(state, dict):
+        return False, u"Report state was not a dictionary."
+
+    state_path = get_report_state_path(settings)
+    try:
+        state_folder = os.path.dirname(state_path)
+        if not os.path.isdir(state_folder):
+            os.makedirs(state_folder)
+        with io.open(state_path, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file, ensure_ascii=False, indent=2)
+        return True, u""
+    except Exception as ex:
+        try:
+            return False, unicode(ex)
+        except NameError:
+            return False, str(ex)
 
 
 def get_output_options(settings):

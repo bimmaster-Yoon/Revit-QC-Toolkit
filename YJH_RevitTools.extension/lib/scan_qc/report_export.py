@@ -2093,7 +2093,11 @@ def _add_summary_table_to_sheet(
             [u"Project", shorten(_get_project_name(doc), 34)],
             [u"Source", shorten(source_plan_name, 34)],
             [u"Point Cloud", shorten(point_cloud_name, 30)],
-            [u"Scope", shorten(scope_label, 30)]
+            [u"Scope", shorten(scope_label, 30)],
+            [
+                u"Target Filter",
+                shorten(plan_preview.get("target_wall_filter_summary", u"None"), 42)
+            ]
         ],
         section_bounds[u"PROJECT / SOURCE"][0],
         section_bounds[u"PROJECT / SOURCE"][1]
