@@ -217,15 +217,3 @@ YJH_RevitTools.extension/
 3. Active Plan Level 전체 분석 안정화
 4. Scan QC 결과 Sheet / 이미지 리포트 품질 개선
 5. 재료 면적 산출 Toolkit 추가
-
-## Portfolio Notes
-
-이 프로젝트는 단순 자동화 예제가 아니라, Revit 기반 도면 QC와 Point Cloud 기반 모델 정합성 검토를 pyRevit Extension 형태로 구현한 BIM/DX 실무형 포트폴리오 프로젝트입니다.
-
-포트폴리오에서 강조할 수 있는 지점:
-
-- Revit 도면 문서 QC 체계화
-- 실무 검토 항목을 Rule Set으로 구조화
-- Point Cloud 기반 Scan-to-BIM 검토 흐름 구현
-- Revision Cloud ID와 PDF Report를 통한 검토 결과 전달
-- 기존 도면 QC 기능을 유지하면서 Scan QC를 별도 모듈로 확장
