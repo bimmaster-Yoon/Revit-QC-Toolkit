@@ -52,6 +52,8 @@ REVISION_CLOUD_CLUSTER_LENGTH_PADDING_MM = 150.0
 CLOSE_CLUSTER_MERGE_GAP_MM = 300.0
 OVERLAP_SKIP_RATIO = 0.5
 PREVIEW_ID_TEXT_SIZE_MM = 5.0
+PREVIEW_ID_TEXT_SIZE_A3_MM = 4.0
+PREVIEW_ID_TEXT_SIZE_A2_MM = 4.6
 MIN_PREVIEW_SPACING_MM = 1000.0
 DEFAULT_PREVIEW_SPACING_MM = 1500.0
 MAX_PREVIEW_SPACING_MM = 3000.0
@@ -885,7 +887,7 @@ def _get_text_type_name(text_type):
         return u""
 
 
-def _find_preview_text_type(doc):
+def _find_preview_text_type(doc, text_type_name=PREVIEW_ID_TEXT_TYPE_NAME):
     text_types = (
         FilteredElementCollector(doc)
         .OfClass(TextNoteType)
@@ -893,7 +895,7 @@ def _find_preview_text_type(doc):
         .ToElements()
     )
     for text_type in text_types:
-        if _get_text_type_name(text_type) == PREVIEW_ID_TEXT_TYPE_NAME:
+        if _get_text_type_name(text_type) == text_type_name:
             return text_type
     return None
 
@@ -929,7 +931,7 @@ def _set_opaque_text_background(doc, text_type):
         )
 
 
-def _set_preview_text_size(doc, text_type):
+def _set_preview_text_size(doc, text_type, text_size_mm=PREVIEW_ID_TEXT_SIZE_MM):
     subtransaction = SubTransaction(doc)
     subtransaction_started = False
     try:
@@ -939,7 +941,7 @@ def _set_preview_text_size(doc, text_type):
 
         subtransaction.Start()
         subtransaction_started = True
-        size_parameter.Set(_mm_to_internal(PREVIEW_ID_TEXT_SIZE_MM))
+        size_parameter.Set(_mm_to_internal(text_size_mm))
         status = subtransaction.Commit()
         subtransaction_started = False
         if status != TransactionStatus.Committed:
@@ -958,9 +960,25 @@ def _set_preview_text_size(doc, text_type):
         )
 
 
-def _get_or_create_preview_text_type(doc):
+def _get_preview_id_text_settings(selected_options=None):
+    paper_size = u"A3 Landscape"
+    if hasattr(selected_options, "get"):
+        paper_size = selected_options.get("paper_size", paper_size)
+    if paper_size == u"A2 Landscape":
+        return (
+            PREVIEW_ID_TEXT_TYPE_NAME + u"_A2",
+            PREVIEW_ID_TEXT_SIZE_A2_MM
+        )
+    return (
+        PREVIEW_ID_TEXT_TYPE_NAME + u"_A3",
+        PREVIEW_ID_TEXT_SIZE_A3_MM
+    )
+
+
+def _get_or_create_preview_text_type(doc, selected_options=None):
     default_type_id = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType)
-    text_type = _find_preview_text_type(doc)
+    text_type_name, text_size_mm = _get_preview_id_text_settings(selected_options)
+    text_type = _find_preview_text_type(doc, text_type_name)
     warning = u""
     if text_type is None:
         default_type = doc.GetElement(default_type_id)
@@ -972,7 +990,7 @@ def _get_or_create_preview_text_type(doc):
         try:
             subtransaction.Start()
             subtransaction_started = True
-            text_type = default_type.Duplicate(PREVIEW_ID_TEXT_TYPE_NAME)
+            text_type = default_type.Duplicate(text_type_name)
             status = subtransaction.Commit()
             subtransaction_started = False
             if status != TransactionStatus.Committed:
@@ -984,7 +1002,7 @@ def _get_or_create_preview_text_type(doc):
                     subtransaction.RollBack()
                 except Exception:
                     pass
-            text_type = _find_preview_text_type(doc)
+            text_type = _find_preview_text_type(doc, text_type_name)
             if text_type is None:
                 warning = (
                     u"Preview TextNote type could not be created; the default type "
@@ -997,7 +1015,11 @@ def _get_or_create_preview_text_type(doc):
     opaque_applied, opaque_warning = _set_opaque_text_background(doc, text_type)
     if opaque_warning:
         warning = u"{0} {1}".format(warning, opaque_warning).strip()
-    text_size_applied, text_size_warning = _set_preview_text_size(doc, text_type)
+    text_size_applied, text_size_warning = _set_preview_text_size(
+        doc,
+        text_type,
+        text_size_mm
+    )
     if text_size_warning:
         warning = u"{0} {1}".format(warning, text_size_warning).strip()
     return text_type.Id, opaque_applied, warning
@@ -1487,6 +1509,15 @@ def _create_plan_preview_result(requested):
         "critical_count": 0,
         "ok_count": 0,
         "selected_wall_count": 0,
+        "active_plan_level_wall_count": 0,
+        "unfiltered_target_wall_count": 0,
+        "filtered_target_wall_count": 0,
+        "target_wall_filter": {},
+        "target_wall_filter_summary": u"None",
+        "excluded_exterior_count": 0,
+        "excluded_existing_count": 0,
+        "excluded_demolished_count": 0,
+        "excluded_by_parameter_count": 0,
         "no_point_data_count": 0,
         "no_reliable_data_count": 0,
         "coordinate_mismatch_count": 0,
@@ -1618,7 +1649,8 @@ def create_plan_marker_preview(
     analysis_scope_result,
     deviation_result=None,
     preview_callouts_on_no_deviation_data=True,
-    requested=True
+    requested=True,
+    selected_options=None
 ):
     """Create Revision Clouds with centered alphabet IDs in a generated QC Plan View."""
     result = _create_plan_preview_result(requested)
@@ -1637,6 +1669,42 @@ def create_plan_marker_preview(
             u""
         )
         result["selected_wall_count"] = deviation_result.get("selected_wall_count", 0)
+        result["active_plan_level_wall_count"] = deviation_result.get(
+            "active_plan_level_wall_count",
+            0
+        )
+        result["unfiltered_target_wall_count"] = deviation_result.get(
+            "unfiltered_target_wall_count",
+            0
+        )
+        result["filtered_target_wall_count"] = deviation_result.get(
+            "filtered_target_wall_count",
+            deviation_result.get("target_wall_count", 0)
+        )
+        result["target_wall_filter"] = deviation_result.get(
+            "target_wall_filter",
+            {}
+        )
+        result["target_wall_filter_summary"] = deviation_result.get(
+            "target_wall_filter_summary",
+            u"None"
+        )
+        result["excluded_exterior_count"] = deviation_result.get(
+            "excluded_exterior_count",
+            0
+        )
+        result["excluded_existing_count"] = deviation_result.get(
+            "excluded_existing_count",
+            0
+        )
+        result["excluded_demolished_count"] = deviation_result.get(
+            "excluded_demolished_count",
+            0
+        )
+        result["excluded_by_parameter_count"] = deviation_result.get(
+            "excluded_by_parameter_count",
+            0
+        )
         result["target_wall_count"] = deviation_result.get("target_wall_count", 0)
         result["processed_wall_count"] = deviation_result.get("processed_wall_count", 0)
         result["skipped_wall_count"] = deviation_result.get("skipped_wall_count", 0)
@@ -1864,7 +1932,7 @@ def create_plan_marker_preview(
         if revision_warning:
             result["warnings"].append(revision_warning)
         text_type_id, opaque_applied, text_warning = (
-            _get_or_create_preview_text_type(doc)
+            _get_or_create_preview_text_type(doc, selected_options)
         )
         result["opaque_text_background"] = opaque_applied
         if text_warning:

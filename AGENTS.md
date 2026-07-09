@@ -2,7 +2,7 @@
 
 ## Repository Scope
 
-Work in `R:\Revit_Codex_Automation`. This repository is a Revit 2026 pyRevit extension named `YJH_RevitTools.extension`. The existing production toolkit is the Revit QC Toolkit, with Sheet QC, View QC, Parameter QC, Scan QC, QC Settings, Open Last Report, and Help.
+Work in `R:\Revit_Codex_Automation`. This repository is a Revit 2026 pyRevit extension named `YJH_RevitTools.extension`. The existing production toolkit is the Revit QC Toolkit, with DOC QC, QC Lite, Scan QC, QC Settings, Report, and Help.
 
 The planned Material Area Takeoff Toolkit must be added inside the same pyRevit extension, but kept separate from existing QC features. Do not mix takeoff logic, config, buttons, reports, or UI state into the QC modules unless explicitly requested.
 

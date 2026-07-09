@@ -42,7 +42,7 @@ def read_latest_report_path(reports_dir):
     pointer_path = get_latest_report_pointer(reports_dir)
 
     if not os.path.isfile(pointer_path):
-        return u"", u"마지막 리포트 기록이 없습니다. 먼저 Full QC 또는 Quick QC를 실행하세요."
+        return u"", u"마지막 리포트 기록이 없습니다. 먼저 DOC QC 또는 QC Lite를 실행하세요."
 
     with io.open(pointer_path, "r", encoding="utf-8-sig") as pointer_file:
         report_path = pointer_file.read().strip()

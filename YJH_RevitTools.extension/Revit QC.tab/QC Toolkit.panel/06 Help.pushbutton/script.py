@@ -355,7 +355,7 @@ class HelpForm(Form):
             "1. 기본 사용 흐름",
             "1. QC Settings에서 Excel Report 상태를 확인합니다.\r\n"
             "2. 프로젝트에 맞는 Rule Set을 선택하고 Use This를 누릅니다.\r\n"
-            "3. Run Full QC 또는 Quick QC를 실행합니다.\r\n"
+            "3. DOC QC 또는 QC Lite를 실행합니다.\r\n"
             "4. Export Options에서 저장 형식을 선택합니다.\r\n"
             "5. 결과를 pyRevit output 또는 CSV / Styled Excel Report로 확인합니다.",
             330
@@ -364,13 +364,14 @@ class HelpForm(Form):
         self._add_card(self._create_table_card(
             "2. 주요 버튼",
             [
-                ("Run Full QC", "Sheet, View, Parameter를 모두 검토합니다."),
-                ("Quick QC", "Sheet와 View 중심으로 빠르게 검토합니다."),
-                ("QC Settings", "Excel Report 환경과 QC Rule Set을 설정합니다."),
-                ("Last Report", "마지막으로 저장한 보고서를 엽니다."),
-                ("Help", "이 도움말을 표시합니다."),
+                ("DOC QC", "Sheet / View / Parameter 전체 도면 QC를 실행합니다."),
+                ("QC Lite", "주요 항목 요약 검토를 빠르게 실행합니다."),
+                ("Scan QC", "Point Cloud 기반 Wall Deviation, Revision Cloud ID, PDF Report 흐름을 실행합니다."),
+                ("QC Settings", "Rule Set, 출력 옵션, Scan QC 설정을 관리합니다."),
+                ("Report", "마지막 QC Report를 엽니다."),
+                ("Help", "사용 가이드를 엽니다."),
             ],
-            360,
+            430,
             ("Button", "사용 목적"),
             58.0
         ))
@@ -397,7 +398,7 @@ class HelpForm(Form):
             "3. Open Rule Folder로 config 폴더를 엽니다.\r\n"
             "4. JSON 파일에서 검사 항목, Severity, Recommendation을 수정합니다.\r\n"
             "5. 새 Rule Set을 선택하고 Use This를 누릅니다.\r\n"
-            "6. Run Full QC로 결과가 의도대로 나오는지 확인합니다.\r\n\r\n"
+            "6. DOC QC로 결과가 의도대로 나오는지 확인합니다.\r\n\r\n"
             "Rule Set의 기준은 회사 또는 실무자가 정의하고, JSON은 그 기준을 툴킷이 "
             "읽을 수 있게 정리한 형식입니다.",
             470
@@ -446,10 +447,10 @@ class HelpForm(Form):
 
         self._add_card(self._create_card(
             "8. Model Safety",
-            "• 이 툴킷은 read-only 방식으로 동작합니다.\r\n"
-            "• Revit 요소를 생성, 삭제, 수정하지 않습니다.\r\n"
-            "• 도면 검토, 기준 확인, 협업용 보고서 생성을 지원하기 위한 도구입니다.",
-            260,
+            "• DOC QC와 QC Lite는 read-only 검사이며 Revit 모델을 수정하지 않습니다.\r\n"
+            "• Scan QC는 개발 중인 별도 기능이며 선택 옵션에 따라 SCAN_QC_* 작업 View, Revision Cloud, ID TextNote를 생성할 수 있습니다.\r\n"
+            "• 실제 프로젝트 적용 전에는 테스트 모델에서 Source Plan View, Point Cloud, Selected Walls 흐름을 먼저 검증하세요.",
+            330,
             True
         ))
 

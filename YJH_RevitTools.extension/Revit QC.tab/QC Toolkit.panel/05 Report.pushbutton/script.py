@@ -38,13 +38,13 @@ else:
 
     if opened:
         output.print_html(
-            u"<h2>Last Report</h2><p>파일을 열었습니다.<br>{0}</p>".format(
+            u"<h2>Report</h2><p>파일을 열었습니다.<br>{0}</p>".format(
                 html_escape(report_path)
             )
         )
     else:
         output.print_html(
-            u"<h2>Last Report</h2><p>{0}</p>".format(
+            u"<h2>Report</h2><p>{0}</p>".format(
                 html_escape(open_error)
             )
         )

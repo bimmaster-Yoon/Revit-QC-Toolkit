@@ -35,6 +35,7 @@ from scan_qc.markers import (
     create_3d_marker_preview,
     create_plan_marker_preview
 )
+from scan_qc.report_export import collect_report_sheets, create_scan_qc_report
 from scan_qc.reporting import render_scan_qc_summary
 from scan_qc.settings import get_view_creation_options, load_scan_qc_settings
 from scan_qc.source_views import (
@@ -53,6 +54,7 @@ original_active_view = doc.ActiveView
 selected_walls = collect_selected_walls(uidoc)
 point_clouds = collect_point_cloud_instances(doc)
 source_plan_views = collect_source_plan_views(doc)
+existing_report_sheets = collect_report_sheets(doc)
 if not source_plan_views:
     forms.alert(
         "Scan QC requires at least one duplicable Plan View "
@@ -76,12 +78,27 @@ selected_options = request_scan_qc_options(
     len(selected_walls),
     point_clouds,
     source_plan_views,
+    existing_report_sheets,
     default_source_plan_view_id,
     scan_qc_settings
 )
 
 if selected_options is None:
     script.exit()
+
+if selected_options.get("create_pdf_report", False):
+    pdf_plan_dependency = selected_options.get("pdf_required_qc_plan_view", u"")
+    if selected_options.get("create_plan_view", False):
+        if not pdf_plan_dependency or pdf_plan_dependency == u"N/A":
+            selected_options["pdf_required_qc_plan_view"] = u"Existing"
+    else:
+        selected_options["create_plan_view"] = True
+        selected_options["pdf_required_qc_plan_view"] = u"Auto-created"
+        selected_output_options = selected_options.get("selected_output_options", [])
+        if isinstance(selected_output_options, list):
+            selected_output_options.append(u"Create QC Plan View (auto for PDF)")
+else:
+    selected_options["pdf_required_qc_plan_view"] = u"Not requested"
 
 selected_walls, wall_selection_warning = resolve_selected_walls(
     uidoc,
@@ -157,7 +174,8 @@ plan_marker_preview = create_plan_marker_preview(
         "create_preview_callouts_when_no_deviation_data",
         True
     ),
-    requested=selected_options.get("create_plan_view", False)
+    requested=selected_options.get("create_plan_view", False),
+    selected_options=selected_options
 )
 view3d_marker_preview = create_3d_marker_preview(
     view3d,
@@ -166,6 +184,14 @@ view3d_marker_preview = create_3d_marker_preview(
 view_creation_result["marker_preview"] = build_marker_preview_result(
     plan_marker_preview,
     view3d_marker_preview
+)
+view_creation_result["report"] = create_scan_qc_report(
+    doc,
+    source_plan_view,
+    plan_view,
+    selected_options,
+    view_creation_result,
+    scan_qc_settings
 )
 
 render_scan_qc_summary(

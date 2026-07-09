@@ -171,7 +171,7 @@ def render_quick_report(
     styled_xlsx_error,
     export_options
 ):
-    """Sheet + View Quick QC용 간결한 Summary를 출력한다."""
+    """Sheet + View QC Lite용 간결한 Summary를 출력한다."""
     apply_portfolio_output_style(output)
 
     compact_summary_rows = [
@@ -189,7 +189,7 @@ def render_quick_report(
     output.print_html(
         u"""
         <div style="font-family:Segoe UI, Arial, sans-serif;">
-            <h2 style="color:#263645;">Revit Quick QC</h2>
+            <h2 style="color:#263645;">Revit QC Lite</h2>
             <div style="color:#5F6F7D; margin-bottom:10px;">{0}</div>
             <div style="color:#5F6F7D; margin-bottom:10px;">
                 Sheet QC + View QC / Parameter QC 제외
@@ -200,7 +200,7 @@ def render_quick_report(
 
     output.print_html_table(
         table_data=compact_summary_rows,
-        title="Quick QC Compact Summary",
+        title="QC Lite Compact Summary",
         columns=["Summary", "Value"],
         column_widths=["260px", "220px"],
         table_width_style="width:500px",

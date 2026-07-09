@@ -14,6 +14,23 @@ def _yes_no(value):
     return u"Yes" if value else u"No"
 
 
+def _format_target_wall_filter_options(options):
+    if not isinstance(options, dict):
+        return u"None"
+    enabled = []
+    if options.get("interior_walls_only"):
+        enabled.append(u"Interior by Wall Type Function")
+    if options.get("new_construction_only"):
+        enabled.append(u"New Construction by Phase")
+    if options.get("exclude_exterior_walls"):
+        enabled.append(u"Exclude Exterior by Wall Type Function")
+    if options.get("only_scan_qc_target_yes"):
+        enabled.append(u"SCAN_QC_TARGET = Yes")
+    if not enabled:
+        return u"None"
+    return u", ".join(enabled)
+
+
 def _found_missing(value):
     return u"Found" if value else u"Missing"
 
@@ -501,7 +518,30 @@ def _render_marker_preview(output, marker_preview_result):
                 plan_preview.get("sampling_failure_reason", u"None") or u"None"
             ],
             [u"Selected Wall Count", plan_preview.get("selected_wall_count", 0)],
+            [
+                u"Target Wall Filter",
+                plan_preview.get("target_wall_filter_summary", u"None")
+            ],
             [u"Target Wall Count", plan_preview.get("target_wall_count", 0)],
+            [
+                u"Filtered Target Wall Count",
+                plan_preview.get(
+                    "filtered_target_wall_count",
+                    plan_preview.get("target_wall_count", 0)
+                )
+            ],
+            [
+                u"Excluded Exterior Count",
+                plan_preview.get("excluded_exterior_count", 0)
+            ],
+            [
+                u"Excluded Existing Count",
+                plan_preview.get("excluded_existing_count", 0)
+            ],
+            [
+                u"Excluded By Parameter Count",
+                plan_preview.get("excluded_by_parameter_count", 0)
+            ],
             [
                 u"Max Process Walls",
                 plan_preview.get("max_process_wall_count", u"N/A")
@@ -1049,6 +1089,155 @@ def _render_marker_preview(output, marker_preview_result):
         )
 
 
+def _render_report_export(output, report_result):
+    if not hasattr(report_result, "get"):
+        report_result = {}
+
+    if report_result.get("export_cancelled", False):
+        export_status = u"Cancelled"
+    elif report_result.get("pdf_exported", False):
+        export_status = u"Exported"
+    elif report_result.get("requested", False):
+        export_status = u"Failed or skipped"
+    else:
+        export_status = u"Not requested"
+
+    output.print_md("### I. Scan QC Report Export")
+    output.print_table(
+        table_data=[
+            [
+                u"Report Requested",
+                _yes_no(report_result.get("requested", False))
+            ],
+            [
+                u"Report Sheet Mode",
+                report_result.get("report_sheet_mode_label", u"") or u"N/A"
+            ],
+            [
+                u"Paper Size",
+                report_result.get("paper_size", u"N/A")
+            ],
+            [
+                u"Titleblock Mode",
+                report_result.get("titleblock_mode", u"N/A")
+            ],
+            [
+                u"PDF Required QC Plan View",
+                report_result.get("pdf_required_qc_plan_view", u"N/A")
+            ],
+            [
+                u"PDF Save Dialog Result",
+                report_result.get("pdf_save_dialog_result", u"N/A")
+            ],
+            [
+                u"Report Sheet Created",
+                _yes_no(report_result.get("report_sheet_created", False))
+            ],
+            [
+                u"Report Sheet Name",
+                report_result.get("sheet_name", u"") or u"N/A"
+            ],
+            [
+                u"Report Sheet Number",
+                report_result.get("sheet_number", u"") or u"N/A"
+            ],
+            [
+                u"Titleblock",
+                report_result.get("titleblock_name", u"") or u"N/A"
+            ],
+            [
+                u"QC Plan Viewport",
+                _yes_no(report_result.get("viewport_created", False))
+            ],
+            [
+                u"Viewport Scale",
+                report_result.get("viewport_scale", u"N/A")
+            ],
+            [
+                u"Viewport Scale Basis",
+                report_result.get("viewport_scale_source", u"N/A")
+            ],
+            [
+                u"Viewport Title Hidden",
+                _yes_no(report_result.get("viewport_title_hidden", False))
+            ],
+            [
+                u"Viewport Title Status",
+                report_result.get("viewport_title_status", u"N/A")
+            ],
+            [
+                u"Summary TextNote/Table",
+                report_result.get("summary_textnote_count", 0)
+            ],
+            [
+                u"Summary Layout",
+                report_result.get("summary_layout", u"N/A")
+            ],
+            [
+                u"Summary Panel Width",
+                u"{0} mm".format(
+                    report_result.get("summary_panel_width_mm", u"N/A")
+                )
+            ],
+            [
+                u"Summary Separators",
+                report_result.get("summary_separator_count", 0)
+            ],
+            [
+                u"Export Cancelled",
+                _yes_no(report_result.get("export_cancelled", False))
+            ],
+            [
+                u"PDF Exported",
+                _yes_no(report_result.get("pdf_exported", False))
+            ],
+            [
+                u"Export Status",
+                export_status
+            ],
+            [
+                u"PDF Path",
+                report_result.get("pdf_path", u"") or u"N/A"
+            ],
+            [
+                u"Image Exported",
+                _yes_no(report_result.get("image_exported", False))
+            ],
+            [
+                u"Image Path",
+                report_result.get("image_path", u"") or u"N/A"
+            ],
+            [
+                u"Image Status",
+                report_result.get("image_status", u"") or u"N/A"
+            ],
+            [
+                u"Failure Reason",
+                report_result.get("failure_reason", u"") or u"None"
+            ]
+        ],
+        columns=[u"Report Item", u"Result"]
+    )
+
+    warnings = report_result.get("warnings") or []
+    if not isinstance(warnings, (list, tuple)):
+        warnings = [warnings]
+    for warning in warnings:
+        if warning:
+            output.print_md(
+                u"> **Warning:** Scan QC Report: {0}".format(warning)
+            )
+
+    errors = report_result.get("errors") or []
+    if not isinstance(errors, (list, tuple)):
+        errors = [errors]
+    for error in errors:
+        if error and error not in warnings:
+            output.print_md(
+                u"> **Warning:** Scan QC Report: {0}".format(error)
+            )
+
+
 def render_scan_qc_summary(
     output,
     selected_wall_count,
@@ -1095,9 +1284,26 @@ def render_scan_qc_summary(
                 u"Source Plan View ElementId",
                 selected_options.get("source_plan_view_id", u"N/A")
             ],
-            [u"Selected Point Cloud", selected_options["point_cloud_name"]],
+            [
+                u"Analysis Point Cloud Source",
+                selected_options["point_cloud_name"]
+            ],
             [u"Point Cloud ElementId", selected_options["point_cloud_id"]],
             [u"Selected Output Options", output_options_text],
+            [
+                u"Top N Callouts",
+                selected_options.get("top_n_callouts", u"N/A")
+            ],
+            [
+                u"Paper Size",
+                selected_options.get("paper_size", u"A3 Landscape")
+            ],
+            [
+                u"Target Wall Filter",
+                _format_target_wall_filter_options(
+                    selected_options.get("target_wall_filter", {})
+                )
+            ],
             [
                 u"Preview Callouts When No Deviation Data",
                 _yes_no(
@@ -1121,7 +1327,64 @@ def render_scan_qc_summary(
     _render_analysis_scope(output, view_creation_result["analysis_scope"])
     _render_view_creation(output, view_creation_result)
     _render_marker_preview(output, view_creation_result.get("marker_preview", {}))
-    output.print_md(
-        "> No point recoloring, PDF creation, or CSV export was "
-        "performed."
+    marker_preview = view_creation_result.get("marker_preview", {})
+    plan_preview = {}
+    if hasattr(marker_preview, "get"):
+        plan_preview = marker_preview.get("plan") or {}
+    if hasattr(plan_preview, "get"):
+        output.print_md("### H. Scan QC Processing Limits")
+        output.print_table(
+            table_data=[
+                [
+                    u"Source Plan View",
+                    selected_options.get("source_plan_view_name", u"N/A")
+                ],
+                [
+                    u"Top N Callouts",
+                    plan_preview.get(
+                        "top_n_callouts",
+                        selected_options.get("top_n_callouts", u"N/A")
+                    )
+                ],
+                [
+                    u"Active Plan Level Wall Count",
+                    plan_preview.get("active_plan_level_wall_count", 0)
+                ],
+                [
+                    u"Filtered Target Wall Count",
+                    plan_preview.get(
+                        "filtered_target_wall_count",
+                        plan_preview.get("target_wall_count", 0)
+                    )
+                ],
+                [
+                    u"Excluded Exterior Count",
+                    plan_preview.get("excluded_exterior_count", 0)
+                ],
+                [
+                    u"Excluded Existing Count",
+                    plan_preview.get("excluded_existing_count", 0)
+                ],
+                [
+                    u"Excluded By Parameter Count",
+                    plan_preview.get("excluded_by_parameter_count", 0)
+                ]
+            ],
+            columns=[u"Processing Item", u"Result"]
+        )
+    _render_report_export(output, view_creation_result.get("report", {}))
+    report_result = view_creation_result.get("report", {})
+    pdf_exported = (
+        hasattr(report_result, "get")
+        and report_result.get("pdf_exported", False)
     )
+    if pdf_exported:
+        output.print_md(
+            "> No point recoloring or CSV export was performed. "
+            "PDF report export was completed from the generated Report Sheet."
+        )
+    else:
+        output.print_md(
+            "> No point recoloring or CSV export was performed. "
+            "PDF report export was not completed."
+        )

@@ -665,7 +665,7 @@ def create_workbook(payload):
     full_detail_sheet = workbook.create_sheet("Full Detail")
     apply_table(
         full_detail_sheet,
-        "Full QC Detail",
+        "DOC QC Detail",
         [
             "Category",
             "Severity",

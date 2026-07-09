@@ -1,7 +1,7 @@
 layout:
-  - Run Full QC
-  - Quick QC
-  - Scan QC
-  - QC Settings
-  - Last Report
-  - Help
+  - 01 DOC QC
+  - 02 QC Lite
+  - 03 Scan QC
+  - 04 QC Settings
+  - 05 Report
+  - 06 Help

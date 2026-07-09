@@ -56,7 +56,7 @@ ACTIVE_CONFIG_DISPLAY = u"{0} ({1})".format(
 )
 doc = revit.doc
 output = script.get_output()
-output.set_title("Revit Quick QC {0}".format(VERSION))
+output.set_title("Revit QC Lite {0}".format(VERSION))
 if CONFIG_META.get("warning", u""):
     output.print_html(
         u"<div style='padding:8px; background:#FFF1E6; color:#263645;'>"
@@ -69,7 +69,7 @@ selected_export_options = request_export_options(REPORTS_DIR, quick_mode=True)
 
 if selected_export_options is None:
     output.print_html(
-        u"<h2>Revit Quick QC</h2><p>Export cancelled by user</p>"
+        u"<h2>Revit QC Lite</h2><p>Export cancelled by user</p>"
     )
     script.exit()
 
@@ -99,7 +99,7 @@ report_context = {
     "active_config": ACTIVE_CONFIG_PATH,
     "active_config_display": ACTIVE_CONFIG_DISPLAY,
     "active_preset": ACTIVE_PRESET_NAME,
-    "run_mode": u"Quick QC",
+    "run_mode": u"QC Lite",
     "checked_parameter_elements": 0,
     "review_group_count": len(issue_group_rows),
     "run_time": run_time,

@@ -29,11 +29,23 @@
     "top_n_callouts": 7,
     "max_active_level_walls": 20
   },
+  "target_wall_filter": {
+    "interior_walls_only": false,
+    "new_construction_only": false,
+    "exclude_exterior_walls": false,
+    "only_scan_qc_target_yes": false
+  },
+  "report": {
+    "paper_size": "A3 Landscape",
+    "output_folder": "reports/scan_qc",
+    "last_pdf_folder": "",
+    "export_image": false
+  },
   "output": {
     "create_plan_view": true,
     "create_3d_view": true,
-    "create_pdf_report": true,
+    "create_pdf_report": false,
     "export_csv": false,
-    "create_preview_callouts_when_no_deviation_data": true
+    "create_preview_callouts_when_no_deviation_data": false
   }
 }

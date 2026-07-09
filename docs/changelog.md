@@ -38,7 +38,7 @@
 - Styled XLSX 용어를 Styled Excel Report로 정리
 - config 폴더의 `qc_config_*.json` preset 자동 검색 및 local config 제외
 - Default QC, Interior QC, Company Template preset 제공
-- 선택 preset을 local `active_config`에 저장하고 Full/Quick QC에 적용
+- 선택 preset을 local `active_config`에 저장하고 Full/QC Lite에 적용
 - preset metadata `preset_name`, `preset_description` 추가
 - 선택 preset 복제 및 timestamp custom preset 생성 기능 추가
 - Sheet/View/Parameter Rules와 Required Parameters 요약 카드 추가
@@ -114,16 +114,16 @@
 - High/Medium/Low Severity fill, zebra row, 얇은 border와 text wrap 적용
 - Review Groups Count 강조 및 Recommendation 컬럼 추가
 - 표 시트 autofilter, freeze pane 및 자동 열 너비 적용
-- Run Full QC와 Quick QC의 Styled XLSX 선택 옵션 연결
+- DOC QC와 QC Lite의 Styled XLSX 선택 옵션 연결
 - 생성된 XLSX를 `latest_report_path.txt`의 최우선 결과로 기록
 - 외부 Python/openpyxl 미설치 또는 helper 실패 시 XLSX만 skip하고 CSV/QC 계속 실행
 - Full CSV와 Summary CSV 원본·호환 기능 유지
 
 ## v2.4 - Export Options
 
-- Run Full QC와 Quick QC 시작 시 공통 Export Options 대화상자 표시
+- DOC QC와 QC Lite 시작 시 공통 Export Options 대화상자 표시
 - 체크박스로 Full CSV, Summary CSV, Styled XLSX Report 선택 가능
-- Quick QC 기본값을 Full CSV OFF, Summary CSV ON, Styled XLSX ON으로 설정
+- QC Lite 기본값을 Full CSV OFF, Summary CSV ON, Styled XLSX ON으로 설정
 - Windows 폴더 선택 UI와 실제 쓰기 가능 여부 검증 적용
 - 사용자가 Cancel하거나 출력 형식을 선택하지 않으면 QC 실행 중단
 - 선택 폴더에 timestamp 기반 Full/Summary CSV 저장
@@ -135,10 +135,10 @@
 
 ## v2.3.1 - Toolkit Icons and Tooltips
 
-- Run Full QC에 문서와 체크마크 아이콘 적용
-- Quick QC에 번개와 체크마크 아이콘 적용
+- DOC QC에 문서와 체크마크 아이콘 적용
+- QC Lite에 번개와 체크마크 아이콘 적용
 - QC Settings에 슬라이더 아이콘 적용
-- Open Last Report에 폴더와 문서 아이콘 적용
+- Report에 폴더와 문서 아이콘 적용
 - Help에 문서와 물음표 아이콘 적용
 - 5개 버튼 tooltip을 검사 범위와 사용 목적 중심으로 정리
 - 투명 배경, 다크 네이비 선, 오렌지 포인트의 공통 스타일 적용
@@ -148,14 +148,14 @@
 
 ## v2.3 - QC Toolkit Buttons
 
-- 기존 `QC Report.pushbutton`을 `Run Full QC.pushbutton`으로 이전
+- 기존 `QC Report.pushbutton`을 `01 DOC QC.pushbutton`으로 이전
 - Sheet + View + Parameter 전체 검사 및 Full/Summary CSV 기능 유지
-- Sheet + View만 검사하는 `Quick QC.pushbutton` 추가
-- 공통 JSON 경로를 표시하고 여는 `QC Settings.pushbutton` 추가
-- 마지막 Summary CSV를 여는 `Open Last Report.pushbutton` 추가
-- 버튼 역할과 read-only 방식을 설명하는 `Help.pushbutton` 추가
+- Sheet + View만 검사하는 `02 QC Lite.pushbutton` 추가
+- 공통 JSON 경로를 표시하고 여는 `04 QC Settings.pushbutton` 추가
+- 마지막 Summary CSV를 여는 `05 Report.pushbutton` 추가
+- 버튼 역할과 read-only 방식을 설명하는 `06 Help.pushbutton` 추가
 - 공통 `lib`, `config`, `reports`를 extension 루트로 이동
-- Full QC와 Quick QC 실행 후 `reports/latest_report_path.txt` 갱신
+- DOC QC와 QC Lite 실행 후 `reports/latest_report_path.txt` 갱신
 - 5개 버튼에 기존 icon.png를 임시 공통 아이콘으로 적용
 - 각 버튼별 tooltip.md 추가
 - Transaction을 사용하지 않는 read-only 방식 유지
