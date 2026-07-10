@@ -9,7 +9,14 @@ clr.AddReference("System.Windows.Forms")
 
 from System import DateTime
 from System.Diagnostics import Stopwatch
-from System.Drawing import Color, ContentAlignment, FontStyle, Size, SizeF
+from System.Drawing import (
+    Color,
+    ContentAlignment,
+    FontStyle,
+    Rectangle,
+    Size,
+    SizeF
+)
 from System.Windows.Forms import (
     AutoScaleMode,
     AutoSizeMode,
@@ -27,6 +34,7 @@ from System.Windows.Forms import (
     Form,
     FormBorderStyle,
     FormStartPosition,
+    FormWindowState,
     GroupBox,
     HorizontalAlignment,
     Label,
@@ -42,6 +50,7 @@ from System.Windows.Forms import (
 )
 
 from scan_qc.collectors import get_element_id_value, get_point_cloud_name
+from scan_qc.controls import TopNCalloutsSlider
 from scan_qc.analysis_scope import (
     ANALYSIS_SCOPE_ACTIVE_PLAN_LEVEL,
     ANALYSIS_SCOPE_LABELS,
@@ -109,6 +118,14 @@ GROUP_VERTICAL_MARGIN = Padding(0, 0, 0, SECTION_GAP)
 CONTROL_HEIGHT = 32
 FOOTER_BUTTON_GAP = 12
 SCAN_FOOTER_HEIGHT = FOOTER_HEIGHT
+REPORT_LABEL_COLUMN_WIDTH = 180
+REPORT_BADGE_COLUMN_WIDTH = 44
+REPORT_COLUMN_GAP = 12
+REPORT_ROW_HEIGHT = 40
+TOLERANCE_HEADER_HEIGHT = 32
+TOLERANCE_VALUE_HEIGHT = 38
+TOLERANCE_COLUMN_GAP = 8
+WINDOW_STATE_KEY = "scan_qc_window_bounds"
 
 def format_mm_value(value):
     try:
@@ -119,6 +136,36 @@ def format_mm_value(value):
         pass
 
     return u"{0}".format(value)
+
+
+def clamp_window_bounds(
+    x,
+    y,
+    width,
+    height,
+    working_left,
+    working_top,
+    working_width,
+    working_height,
+    minimum_width,
+    minimum_height
+):
+    """Clamp persisted dialog bounds to an available monitor working area."""
+    safe_working_width = max(1, int(working_width))
+    safe_working_height = max(1, int(working_height))
+    safe_width = min(
+        max(int(width), int(minimum_width)),
+        safe_working_width
+    )
+    safe_height = min(
+        max(int(height), int(minimum_height)),
+        safe_working_height
+    )
+    maximum_x = int(working_left) + safe_working_width - safe_width
+    maximum_y = int(working_top) + safe_working_height - safe_height
+    safe_x = min(max(int(x), int(working_left)), maximum_x)
+    safe_y = min(max(int(y), int(working_top)), maximum_y)
+    return safe_x, safe_y, safe_width, safe_height
 
 
 def get_sheet_name(sheet):
@@ -184,6 +231,8 @@ class ScanQcForm(Form):
         self.existing_report_sheets_loaded = bool(existing_report_sheets)
         self.combo_population_ms = 0
         self.pdf_auto_enabled_plan_view = False
+        self._window_bounds_applied = False
+        self._window_bounds_saved = False
         tolerance_mm = get_tolerance_mm(settings)
         deviation_options = get_deviation_options(settings)
         self.default_tolerance_mm = tolerance_mm
@@ -205,7 +254,7 @@ class ScanQcForm(Form):
             min(900, client_height)
         )
         self.FormBorderStyle = FormBorderStyle.Sizable
-        self.StartPosition = FormStartPosition.CenterScreen
+        self.StartPosition = FormStartPosition.Manual
         self.MaximizeBox = True
         self.MinimizeBox = False
         self.ShowInTaskbar = False
@@ -216,6 +265,8 @@ class ScanQcForm(Form):
         self.AutoScaleDimensions = SizeF(96.0, 96.0)
         self.AutoScroll = False
         self.tool_tip = configure_tooltip(ToolTip())
+        self.Load += self._apply_saved_window_bounds
+        self.FormClosed += self._save_window_bounds_once
 
         root_layout = TableLayoutPanel()
         root_layout.Dock = DockStyle.Fill
@@ -672,25 +723,29 @@ class ScanQcForm(Form):
             tolerance_layout.ColumnStyles.Add(
                 ColumnStyle(SizeType.Percent, 100.0 / 3.0)
             )
-        tolerance_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
-        tolerance_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        tolerance_layout.RowStyles.Add(
+            RowStyle(SizeType.Absolute, TOLERANCE_HEADER_HEIGHT)
+        )
+        tolerance_layout.RowStyles.Add(
+            RowStyle(SizeType.Absolute, TOLERANCE_VALUE_HEIGHT)
+        )
         tolerance_group.Controls.Add(tolerance_layout)
 
-        tolerance_layout.Controls.Add(
-            self._create_input_label("OK Max (mm)", Color.FromArgb(232, 245, 233)),
-            0,
-            0
+        ok_header = self._create_input_label(
+            "OK Max (mm)",
+            Color.FromArgb(232, 245, 233)
         )
-        tolerance_layout.Controls.Add(
-            self._create_input_label("Review Max (mm)", WARNING_BACKGROUND_COLOR),
-            1,
-            0
+        review_header = self._create_input_label(
+            "Review Max (mm)",
+            WARNING_BACKGROUND_COLOR
         )
-        tolerance_layout.Controls.Add(
-            self._create_input_label("Critical", Color.FromArgb(252, 235, 235)),
-            2,
-            0
+        critical_header = self._create_input_label(
+            "Critical",
+            Color.FromArgb(252, 235, 235)
         )
+        tolerance_layout.Controls.Add(ok_header, 0, 0)
+        tolerance_layout.Controls.Add(review_header, 1, 0)
+        tolerance_layout.Controls.Add(critical_header, 2, 0)
 
         self.ok_max_text = self._create_tolerance_text_box(tolerance_mm["ok_max"])
         self.review_max_text = self._create_tolerance_text_box(
@@ -706,19 +761,29 @@ class ScanQcForm(Form):
             u"Review와 Critical을 나누는 최대 Review 기준값입니다. 이 값을 "
             u"초과하면 Critical로 분류됩니다."
         )
-        critical_label = Label()
-        critical_label.Text = "Review Max +"
-        critical_label.Dock = DockStyle.Fill
-        critical_label.AutoSize = False
-        critical_label.MinimumSize = Size(0, CONTROL_HEIGHT)
-        critical_label.TextAlign = ContentAlignment.MiddleCenter
-        critical_label.BackColor = Color.FromArgb(252, 235, 235)
-        critical_label.ForeColor = NAVY_COLOR
-        critical_label.Font = get_preferred_font(10.0, FontStyle.Bold)
-        critical_label.Margin = Padding(4)
+        self.critical_value_label = Label()
+        self.critical_value_label.Dock = DockStyle.Fill
+        self.critical_value_label.AutoSize = False
+        self.critical_value_label.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.critical_value_label.TextAlign = ContentAlignment.MiddleCenter
+        self.critical_value_label.BackColor = Color.FromArgb(252, 235, 235)
+        self.critical_value_label.ForeColor = NAVY_COLOR
+        self.critical_value_label.Font = get_preferred_font(
+            10.0,
+            FontStyle.Bold
+        )
+        self.critical_value_label.Padding = Padding(0)
+        self.critical_value_label.Margin = Padding(
+            TOLERANCE_COLUMN_GAP // 2,
+            3,
+            TOLERANCE_COLUMN_GAP // 2,
+            3
+        )
         tolerance_layout.Controls.Add(self.ok_max_text, 0, 1)
         tolerance_layout.Controls.Add(self.review_max_text, 1, 1)
-        tolerance_layout.Controls.Add(critical_label, 2, 1)
+        tolerance_layout.Controls.Add(self.critical_value_label, 2, 1)
+        self.review_max_text.TextChanged += self._update_critical_value_display
+        self._update_critical_value_display(None, None)
 
         output_group = self._create_group("Output Options")
         main_layout.Controls.Add(output_group, 0, 5)
@@ -812,16 +877,18 @@ class ScanQcForm(Form):
         report_settings_layout.ColumnCount = 3
         report_settings_layout.RowCount = 3
         report_settings_layout.ColumnStyles.Add(
-            ColumnStyle(SizeType.Absolute, 190.0)
+            ColumnStyle(SizeType.Absolute, REPORT_LABEL_COLUMN_WIDTH)
         )
         report_settings_layout.ColumnStyles.Add(
-            ColumnStyle(SizeType.Percent, 45.0)
+            ColumnStyle(SizeType.Percent, 100.0)
         )
         report_settings_layout.ColumnStyles.Add(
-            ColumnStyle(SizeType.Percent, 55.0)
+            ColumnStyle(SizeType.Absolute, REPORT_BADGE_COLUMN_WIDTH)
         )
         for _index in range(3):
-            report_settings_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+            report_settings_layout.RowStyles.Add(
+                RowStyle(SizeType.Absolute, REPORT_ROW_HEIGHT)
+            )
         report_settings_group.Controls.Add(report_settings_layout)
         self.report_settings_layout = report_settings_layout
 
@@ -829,6 +896,24 @@ class ScanQcForm(Form):
             "Report Sheet Mode"
         )
         report_settings_layout.Controls.Add(report_sheet_mode_label, 0, 0)
+
+        report_sheet_mode_layout = TableLayoutPanel()
+        report_sheet_mode_layout.Dock = DockStyle.Fill
+        report_sheet_mode_layout.Margin = Padding(0)
+        report_sheet_mode_layout.ColumnCount = 2
+        report_sheet_mode_layout.RowCount = 1
+        report_sheet_mode_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 45.0)
+        )
+        report_sheet_mode_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 55.0)
+        )
+        report_sheet_mode_layout.RowStyles.Add(
+            RowStyle(SizeType.Absolute, REPORT_ROW_HEIGHT)
+        )
+        report_settings_layout.Controls.Add(report_sheet_mode_layout, 1, 0)
+        report_settings_layout.SetColumnSpan(report_sheet_mode_layout, 2)
+        self.report_sheet_mode_layout = report_sheet_mode_layout
 
         self.report_sheet_mode_combo = ComboBox()
         self.report_sheet_mode_combo.Dock = DockStyle.Fill
@@ -849,7 +934,7 @@ class ScanQcForm(Form):
         self.report_sheet_mode_combo.SelectedIndexChanged += (
             self._update_report_sheet_ui
         )
-        report_settings_layout.Controls.Add(self.report_sheet_mode_combo, 1, 0)
+        report_sheet_mode_layout.Controls.Add(self.report_sheet_mode_combo, 0, 0)
         self._set_tooltip(
             self.report_sheet_mode_combo,
             u"PDF Report Sheet 생성 방식을 선택합니다. 기본값은 Scan QC 전용 "
@@ -861,30 +946,44 @@ class ScanQcForm(Form):
         self.existing_report_sheet_combo.DropDownStyle = ComboBoxStyle.DropDownList
         self.existing_report_sheet_combo.DropDownWidth = 1400
         self.existing_report_sheet_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
-        self.existing_report_sheet_combo.Margin = Padding(12, 4, 0, 4)
+        self.existing_report_sheet_combo.Margin = Padding(
+            REPORT_COLUMN_GAP,
+            4,
+            0,
+            4
+        )
         self._populate_existing_report_sheet_combo()
-        report_settings_layout.Controls.Add(
+        report_sheet_mode_layout.Controls.Add(
             self.existing_report_sheet_combo,
-            2,
+            1,
             0
         )
 
         top_n_label = self._create_report_setting_label("Top N Callouts")
         report_settings_layout.Controls.Add(top_n_label, 0, 1)
 
-        self.top_n_callouts_text = TextBox()
-        self.top_n_callouts_text.Text = u"{0}".format(self.default_top_n_callouts)
-        self.top_n_callouts_text.Dock = DockStyle.Fill
-        self.top_n_callouts_text.MinimumSize = Size(0, CONTROL_HEIGHT)
-        self.top_n_callouts_text.Margin = Padding(0, 4, 0, 4)
-        self.top_n_callouts_text.Font = get_preferred_font(10.0, FontStyle.Bold)
-        self.top_n_callouts_text.TextAlign = HorizontalAlignment.Center
-        report_settings_layout.Controls.Add(self.top_n_callouts_text, 1, 1)
-        report_settings_layout.SetColumnSpan(self.top_n_callouts_text, 2)
+        self.top_n_callouts_slider = TopNCalloutsSlider(
+            self.default_top_n_callouts
+        )
+        self.top_n_callouts_slider.Dock = DockStyle.Fill
+        self.top_n_callouts_slider.Margin = Padding(0)
+        self.top_n_callouts_slider.Font = get_preferred_font(
+            9.5,
+            FontStyle.Bold
+        )
+        self.top_n_callouts_value = self.top_n_callouts_slider.Value
+        self.top_n_callouts_slider.set_value_changed_callback(
+            self._update_top_n_callouts_value
+        )
+        report_settings_layout.Controls.Add(self.top_n_callouts_slider, 1, 1)
+        report_settings_layout.SetColumnSpan(self.top_n_callouts_slider, 2)
         self._set_tooltip(
-            self.top_n_callouts_text,
-            u"검토 결과 중 심각도가 높은 상위 N개 위치만 Revision Cloud ID로 "
-            u"표시합니다."
+            self.top_n_callouts_slider,
+            u"도면과 리포트에 표시할 Review/Critical 상위 항목 수를 설정합니다."
+        )
+        self._set_tooltip(
+            self.top_n_callouts_slider.ValueTextBox,
+            u"도면과 리포트에 표시할 Review/Critical 상위 항목 수를 설정합니다."
         )
 
         paper_size_label = self._create_report_setting_label("Paper Size")
@@ -1006,6 +1105,83 @@ class ScanQcForm(Form):
         self.ResumeLayout(True)
         self.PerformLayout()
 
+    def _center_on_primary_working_area(self):
+        working_area = Screen.PrimaryScreen.WorkingArea
+        width = min(max(self.Width, self.MinimumSize.Width), working_area.Width)
+        height = min(
+            max(self.Height, self.MinimumSize.Height),
+            working_area.Height
+        )
+        x = working_area.Left + ((working_area.Width - width) // 2)
+        y = working_area.Top + ((working_area.Height - height) // 2)
+        self.Bounds = Rectangle(x, y, width, height)
+
+    def _apply_saved_window_bounds(self, sender, event_args):
+        if self._window_bounds_applied:
+            return
+        self._window_bounds_applied = True
+
+        state = load_report_state(self.settings)
+        saved_bounds = state.get(WINDOW_STATE_KEY, {})
+        if not isinstance(saved_bounds, dict):
+            self._center_on_primary_working_area()
+            return
+
+        try:
+            x = int(saved_bounds.get("x"))
+            y = int(saved_bounds.get("y"))
+            width = int(saved_bounds.get("width"))
+            height = int(saved_bounds.get("height"))
+            if width <= 0 or height <= 0:
+                raise ValueError()
+        except Exception:
+            self._center_on_primary_working_area()
+            return
+
+        probe_bounds = Rectangle(x, y, max(1, width), max(1, height))
+        working_area = Screen.FromRectangle(probe_bounds).WorkingArea
+        safe_bounds = clamp_window_bounds(
+            x,
+            y,
+            width,
+            height,
+            working_area.Left,
+            working_area.Top,
+            working_area.Width,
+            working_area.Height,
+            self.MinimumSize.Width,
+            self.MinimumSize.Height
+        )
+        self.Bounds = Rectangle(
+            safe_bounds[0],
+            safe_bounds[1],
+            safe_bounds[2],
+            safe_bounds[3]
+        )
+
+    def _save_window_bounds_once(self, sender, event_args):
+        if self._window_bounds_saved:
+            return
+        self._window_bounds_saved = True
+        if self.WindowState == FormWindowState.Minimized:
+            return
+
+        if self.WindowState == FormWindowState.Maximized:
+            bounds = self.RestoreBounds
+        else:
+            bounds = self.Bounds
+        if bounds.Width <= 0 or bounds.Height <= 0:
+            return
+
+        state = load_report_state(self.settings)
+        state[WINDOW_STATE_KEY] = {
+            "x": bounds.X,
+            "y": bounds.Y,
+            "width": bounds.Width,
+            "height": bounds.Height
+        }
+        save_report_state(self.settings, state)
+
     def _create_group(self, text):
         group = GroupBox()
         group.Text = text
@@ -1055,7 +1231,13 @@ class ScanQcForm(Form):
         label.BackColor = background_color
         label.ForeColor = NAVY_COLOR
         label.Font = get_preferred_font(9.5, FontStyle.Bold)
-        label.Margin = Padding(4)
+        label.Padding = Padding(0)
+        label.Margin = Padding(
+            TOLERANCE_COLUMN_GAP // 2,
+            0,
+            TOLERANCE_COLUMN_GAP // 2,
+            0
+        )
         return label
 
     def _create_input_label(self, text, background_color):
@@ -1080,7 +1262,7 @@ class ScanQcForm(Form):
         label.TextAlign = ContentAlignment.MiddleLeft
         label.ForeColor = NAVY_COLOR
         label.Font = get_preferred_font(9.5, FontStyle.Bold)
-        label.Margin = Padding(6, 4, 6, 4)
+        label.Margin = Padding(0, 4, REPORT_COLUMN_GAP, 4)
         return label
 
     def _create_tolerance_text_box(self, value):
@@ -1088,7 +1270,13 @@ class ScanQcForm(Form):
         text_box.Text = format_mm_value(value)
         text_box.Dock = DockStyle.Fill
         text_box.MinimumSize = Size(0, CONTROL_HEIGHT)
-        text_box.Margin = Padding(4)
+        text_box.Padding = Padding(0)
+        text_box.Margin = Padding(
+            TOLERANCE_COLUMN_GAP // 2,
+            3,
+            TOLERANCE_COLUMN_GAP // 2,
+            3
+        )
         text_box.Font = get_preferred_font(11.0, FontStyle.Bold)
         text_box.TextAlign = HorizontalAlignment.Center
         return text_box
@@ -1221,7 +1409,10 @@ class ScanQcForm(Form):
             "existing_report_sheet_index": (
                 self.existing_report_sheet_combo.SelectedIndex
             ),
-            "top_n_callouts_text": self.top_n_callouts_text.Text,
+            "top_n_callouts_value": self.top_n_callouts_slider.Value,
+            "top_n_callouts_text": u"{0}".format(
+                self.top_n_callouts_slider.Value
+            ),
             "paper_size_index": self.paper_size_combo.SelectedIndex
         }
 
@@ -1292,9 +1483,12 @@ class ScanQcForm(Form):
             self.existing_report_sheet_combo,
             state.get("existing_report_sheet_index", 0)
         )
-        self.top_n_callouts_text.Text = state.get(
-            "top_n_callouts_text",
-            self.top_n_callouts_text.Text
+        self.top_n_callouts_slider.Value = state.get(
+            "top_n_callouts_value",
+            state.get(
+                "top_n_callouts_text",
+                self.top_n_callouts_slider.Value
+            )
         )
         self._restore_combo_index(
             self.paper_size_combo,
@@ -1320,6 +1514,16 @@ class ScanQcForm(Form):
                 u"{0} tolerance value was invalid and default {1} mm was used."
                 .format(label, format_mm_value(fallback))
             )
+
+    def _update_critical_value_display(self, sender, event_args):
+        try:
+            review_max = float(self.review_max_text.Text)
+            if review_max < 0:
+                raise ValueError()
+            display_value = format_mm_value(review_max)
+        except Exception:
+            display_value = u"—"
+        self.critical_value_label.Text = u"{0} mm+".format(display_value)
 
     def _get_tolerance_options(self):
         warnings = []
@@ -1353,24 +1557,11 @@ class ScanQcForm(Form):
             "critical_min": review_max
         }, warnings
 
-    def _parse_positive_int_input(self, text_value, fallback, label):
-        try:
-            value = int(float(text_value))
-            if value <= 0:
-                raise ValueError()
-            return value, u""
-        except Exception:
-            return fallback, (
-                u"{0} value was invalid and default {1} was used."
-                .format(label, fallback)
-            )
-
     def _get_top_n_callouts_options(self):
-        return self._parse_positive_int_input(
-            self.top_n_callouts_text.Text,
-            self.default_top_n_callouts,
-            u"Top N Callouts"
-        )
+        return self.top_n_callouts_value, u""
+
+    def _update_top_n_callouts_value(self, value):
+        self.top_n_callouts_value = value
 
     def _get_report_sheet_options(self):
         if self.report_sheet_mode_combo.SelectedIndex == 1:
@@ -1450,9 +1641,11 @@ class ScanQcForm(Form):
             selected_path = save_dialog.FileName
             selected_folder = os.path.dirname(selected_path)
             if selected_folder:
+                report_state = load_report_state(self.settings)
+                report_state["last_pdf_folder"] = selected_folder
                 _saved, save_warning = save_report_state(
                     self.settings,
-                    {"last_pdf_folder": selected_folder}
+                    report_state
                 )
             else:
                 save_warning = u""
@@ -1584,7 +1777,7 @@ class ScanQcForm(Form):
         self.existing_report_sheet_combo.Enabled = (
             use_existing_sheet and bool(self.existing_report_sheets)
         )
-        self.report_settings_layout.SetColumnSpan(
+        self.report_sheet_mode_layout.SetColumnSpan(
             self.report_sheet_mode_combo,
             1 if use_existing_sheet else 2
         )

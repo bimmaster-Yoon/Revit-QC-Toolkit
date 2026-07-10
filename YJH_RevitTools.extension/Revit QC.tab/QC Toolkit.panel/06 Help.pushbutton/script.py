@@ -33,6 +33,7 @@ from qc_ui_style import (
     apply_primary_button_style, configure_content_scroll, get_preferred_font
 )
 from ui_close_profiler import create_ui_close_profile
+from toolkit_version import get_toolkit_version_label
 
 
 HELP_SECTIONS = [
@@ -48,8 +49,10 @@ HELP_SECTIONS = [
              u"4. 저장 결과는 Report 버튼으로 다시 열 수 있습니다."),
             (u"Model Safety", u"DOC QC와 QC Lite는 read-only입니다. Scan QC는 선택한 "
              u"옵션에 따라 SCAN_QC_* 작업 View, Revision Cloud와 Report Sheet를 생성할 수 있습니다."),
-            (u"Toolkit Info", u"Version: v2.6\r\npyRevit Extension-based Revit QC Toolkit\r\n"
-             u"Developed by JeongHo Yoon | Contact: yjhbim@gmail.com")
+            (u"Toolkit Info", u"Version: {0}\r\nRevit 2026 + pyRevit Extension\r\n"
+             u"버전 표시는 공통 toolkit_version 모듈을 기준으로 합니다.".format(
+                 get_toolkit_version_label()
+             ))
         ]
     ),
     (
@@ -57,12 +60,14 @@ HELP_SECTIONS = [
         u"DOC QC",
         u"Sheet / View / Parameter 전체 도면 패키지를 현재 Rule Set으로 검토합니다.",
         [
-            (u"사용 순서", u"Setup에서 QC Categories, Rule Set, Report Style과 저장 폴더를 "
-             u"확인한 뒤 Run을 누릅니다."),
-            (u"주요 옵션", u"Sheet QC: 번호·이름·배치 View\r\nView QC: 이름·축척·Template·Sheet 배치\r\n"
-             u"Parameter QC: 필수 Shared Parameter와 빈 값\r\nNaming / View Placement: 기존 Sheet·View 규칙에 포함"),
-            (u"제한사항", u"현재 Review Scope 실행 범위는 Current Project입니다. DOC QC PDF Summary는 "
-             u"아직 기존 출력 엔진에 연결되지 않았습니다.")
+            (u"Review Scope", u"Current Project를 기본으로 검토합니다. Current Sheet Set, Selected Sheets, "
+             u"Active View Only 항목은 UI에서 실행 가능 상태를 확인한 뒤 사용합니다."),
+            (u"QC Categories", u"Sheet QC / View QC / Parameter QC를 선택합니다. Naming QC와 "
+             u"View Placement QC는 기존 Sheet·View 검사에 포함됩니다."),
+            (u"Rule / Report", u"Rule Set, Report Folder, Report Style을 확인합니다. XLSX Report와 "
+             u"pyRevit Output Summary 출력은 기존 보고서 엔진을 사용합니다."),
+            (u"실행 후", u"Open Report After Run을 선택하면 정상 생성된 보고서를 실행 후 엽니다. "
+             u"저장 위치 선택을 취소하면 파일을 변경하지 않고 조용히 종료합니다.")
         ]
     ),
     (
@@ -80,15 +85,19 @@ HELP_SECTIONS = [
         u"Scan QC",
         u"Point Cloud를 기준으로 Wall Deviation을 샘플링하고 QC View, Revision Cloud ID와 PDF Report를 생성합니다.",
         [
-            (u"사용 순서", u"Analysis Scope → Source Plan View → Target Wall Filter → Analysis Point Cloud Source → "
-             u"Tolerance → Output Options 순서로 설정합니다."),
+            (u"검토 기준", u"Analysis Scope, Source Plan View, Analysis Point Cloud Source를 선택합니다. "
+             u"선택한 Point Cloud가 Wall Deviation Sampling 기준입니다."),
             (u"Target Wall Filter", u"Interior / Exterior는 도면상 위치가 아니라 Wall Type Function 기준입니다.\r\n"
              u"New Construction은 Phase Created 기준입니다.\r\nSCAN_QC_TARGET은 사용자 Parameter 기준입니다.\r\n"
              u"여러 필터는 AND 조건으로 적용됩니다."),
-            (u"Point Cloud / PDF", u"Analysis Point Cloud Source는 실제 deviation sampling 기준입니다. "
-             u"PDF Report는 QC Plan View를 내부적으로 필요로 하며 자동 생성할 수 있습니다."),
-            (u"주의사항", u"Point Cloud 색상은 변경하지 않습니다. 실제 프로젝트 적용 전 테스트 모델에서 "
-             u"좌표계, 벽 두께, Phase와 Wall Type Function을 확인하세요.")
+            (u"Target 지정", u"SCAN_QC_TARGET Shared Parameter를 Walls에 설치할 수 있습니다. Pick & Mark / "
+             u"Pick & Clear로 값을 지정하고 Show Targets로 현재 대상을 선택 표시합니다."),
+            (u"Tolerance / Top N", u"Default Tolerances는 mm 기준입니다. Top N Callouts는 오렌지 Slider 또는 "
+             u"직접 숫자 입력으로 1~20 범위에서 설정합니다."),
+            (u"View / Report", u"QC Plan / 3D View, Revision Cloud ID, A3/A2 PDF Report를 생성할 수 있습니다. "
+             u"CSV Export는 Planned 상태이며 비활성입니다."),
+            (u"Model Safety", u"원본 Source Plan View와 Point Cloud 그래픽은 수정하지 않습니다. "
+             u"생성 요소는 SCAN_QC_* 작업 View와 Report Sheet에 한정됩니다.")
         ]
     ),
     (
@@ -96,23 +105,32 @@ HELP_SECTIONS = [
         u"QC Settings",
         u"Excel Report 환경과 프로젝트별 QC Rule Set을 관리합니다.",
         [
-            (u"Excel Report", u"Set Python으로 안정적인 python.exe를 지정하고 Test로 openpyxl 상태를 확인합니다. "
-             u"Clear는 저장된 외부 Python 경로를 제거합니다."),
-            (u"QC Rules", u"Rule Set을 선택하고 Use This를 누릅니다. Copy로 새 JSON preset을 만들고 "
-             u"Open Rule Folder에서 수정한 뒤 Reload합니다."),
+            (u"Python / Excel", u"Python 경로를 지정하고 Python / Excel Library / Excel Report 상태를 "
+             u"확인합니다. Test와 Clear는 현재 외부 실행 환경을 점검·해제합니다."),
+            (u"QC Rules", u"Rule Set을 선택하고 적용합니다. Copy로 새 JSON preset을 만들고 "
+             u"Open Rule Folder에서 수정한 뒤 Reload로 다시 읽습니다."),
             (u"Rule Count", u"Sheet / View / Parameter 규칙과 Required Parameter 개수를 동일한 카드에서 확인합니다."),
-            (u"문제 확인", u"Details에서 환경 상세를 보고 Open Log로 XLSX helper debug log를 확인합니다.")
+            (u"진단", u"Details에서 환경 상세를 확인하고 Open Log에서 XLSX helper 실행 로그를 엽니다.")
         ]
     ),
     (
-        u"Reports",
-        u"Reports",
+        u"Report",
+        u"Report",
         u"DOC QC와 QC Lite는 CSV / Styled XLSX를, Scan QC는 전용 PDF Report를 생성합니다.",
         [
             (u"DOC QC", u"Full CSV는 개별 항목, Summary CSV는 그룹 결과, Styled XLSX는 공유용 보고서입니다."),
             (u"Scan QC", u"A3/A2 전용 Report Sheet에 QC Plan View와 Revision Cloud ID Mapping을 배치합니다."),
-            (u"Report 버튼", u"가장 최근에 정상 생성된 XLSX 또는 CSV Report를 기본 프로그램으로 엽니다."),
+            (u"Report 버튼", u"가장 최근에 정상 생성된 QC 보고서를 기본 프로그램으로 엽니다."),
             (u"저장 취소", u"파일 또는 폴더 선택을 취소하면 설정과 파일을 변경하지 않고 조용히 돌아갑니다.")
+        ]
+    ),
+    (
+        u"Help",
+        u"Help",
+        u"Toolkit의 기능별 사용 방법, 모델 안전 기준과 문제 확인 순서를 안내합니다.",
+        [
+            (u"기능 안내", u"DOC QC → QC Lite → Scan QC → QC Settings → Report 순서로 각 기능을 확인합니다."),
+            (u"실무 기준", u"검사 범위, 출력 형식, 모델 변경 여부와 현재 제한사항을 실행 전에 확인합니다.")
         ]
     ),
     (

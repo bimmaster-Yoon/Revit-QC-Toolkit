@@ -1,5 +1,1 @@
-# Help
-
-Revit QC Toolkit 사용 가이드를 엽니다.
-
-DOC QC, QC Lite, Scan QC, QC Settings, Report 기능 설명을 확인할 수 있습니다.
+Toolkit의 기능별 사용 방법과 실무 기준을 확인합니다.

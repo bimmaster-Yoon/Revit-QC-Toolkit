@@ -1,107 +1,86 @@
 # RELEASE NOTES
 
-## v2.8.1 Scan QC Report Layout
+## v2.9.0 — QC UI Stabilization & Scan Target Workflow
 
-이번 릴리즈는 Scan QC MVP 이후 Report Sheet 레이아웃, Setup UI, 버튼명, Help 문구, 한글 문서를 정리한 배포 버전입니다.
+이번 Pre-release는 DOC QC와 Scan QC의 실무 UI 안정화, `SCAN_QC_TARGET` 대상 지정 흐름, Help 및 Ribbon 안내 체계를 정리한 버전입니다.
 
-## 주요 변경
+현재 런타임 버전은 `YJH_RevitTools.extension/lib/toolkit_version.py`의 `2.9.0` 값을 단일 기준으로 사용합니다.
 
-### 버튼명 및 Revit QC 탭 정리
+### DOC QC / QC Settings / Help UI
 
-Revit QC 탭의 버튼명을 짧고 일관되게 정리했습니다.
+- DOC QC, Scan QC, QC Settings, Help의 WinForms 정렬과 100~125% DPI 표시 안정성을 개선했습니다.
+- Footer 버튼 크기, 바깥 여백, GroupBox 정렬과 긴 경로 표시를 통일했습니다.
+- DOC QC Report Folder 선택 후 경로가 즉시 갱신되도록 정리했습니다.
+- UI 종료 시 Timer, event handler, Form lifecycle을 점검하고 불필요한 후처리와 강제 GC를 제거했습니다.
+- Hover와 종료 과정에서 전체 Form Refresh를 피하고 필요한 컨트롤만 다시 그리도록 정리했습니다.
+- Help를 카드형 Navigation 구조로 개편하고 현재 버튼명과 기능 설명을 반영했습니다.
+
+### Ribbon 버튼 및 한글 Tooltip
+
+Revit QC 탭의 버튼 순서와 명칭을 아래 기준으로 통일했습니다.
 
 ```text
 DOC QC | QC Lite | Scan QC | QC Settings | Report | Help
 ```
 
-- `DOC QC`: Sheet / View / Parameter 전체 도면 QC
-- `QC Lite`: 주요 항목 요약 검토
-- `Scan QC`: Point Cloud 기반 Wall Deviation 검토
-- `QC Settings`: Rule Set, 출력 옵션, Scan QC 설정 관리
-- `Report`: 마지막 QC Report 열기
-- `Help`: 사용 가이드 열기
+- 각 pushbutton의 `bundle.yaml`에 짧은 한글 Ribbon Tooltip을 정의했습니다.
+- 기존 `tooltip.md`, Help, README의 설명을 동일한 버튼명으로 정리했습니다.
+- 이전 버튼명 표기를 제거하고 현재 버튼명으로 통일했습니다.
 
-### Scan QC Setup UI 개선
+### SCAN_QC_TARGET Workflow
 
-- 주요 옵션에 한글 중심 Tooltip을 추가했습니다.
-- `Analysis Point Cloud Source` 명칭으로 Point Cloud 선택 용도를 명확히 했습니다.
-- Target Wall Filter 설명을 보완했습니다.
-- Target Wall Filter 기본값을 모두 OFF로 정리했습니다.
-- 여러 Target Wall Filter를 동시에 선택하면 AND 조건으로 적용된다는 점을 명확히 했습니다.
+- 고정 GUID를 사용하는 `SCAN_QC_TARGET` Yes/No 인스턴스 Shared Parameter 정의를 추가했습니다.
+- 최초 Scan QC 실행 시 Walls 카테고리 Instance Parameter 설치 여부를 확인할 수 있습니다.
+- 동일 GUID가 이미 있으면 재생성하지 않고, 같은 이름의 다른 GUID는 자동 덮어쓰지 않습니다.
+- `Pick & Mark`: Revit에서 선택한 Wall을 `Yes`로 지정합니다.
+- `Pick & Clear`: 선택한 Wall 값을 `No`로 해제합니다.
+- `Show Targets`: 현재 Source Plan View의 대상 Wall을 Revit 선택 상태로 표시합니다.
+- 선택 취소 시 별도 Output이나 경고창 없이 Setup UI 상태를 유지합니다.
 
-### Target Wall Filter
+### Scan QC Setup
 
-Scan QC 대상 벽을 선택적으로 제한할 수 있습니다.
+- Target Wall Filter는 여러 옵션 선택 시 AND 조건으로 적용됩니다.
+- Interior / Exterior는 Wall Type Function, New Construction은 Phase Created 기준임을 명확히 표시합니다.
+- Top N Callouts를 1~20 범위의 오렌지 Slider와 직접 숫자 입력으로 설정할 수 있습니다.
+- Slider와 숫자 입력은 양방향으로 동기화되며 범위를 벗어난 값은 자동 보정됩니다.
+- Default Tolerances의 OK / Review / Critical 셀 크기와 정렬을 통일했습니다.
+- Scan QC 창의 마지막 위치와 크기를 기억하며, 모니터 구성이 변경되면 WorkingArea 안으로 보정합니다.
 
-- Interior Walls Only
-- New Construction Only
-- Exclude Exterior Walls
-- Only `SCAN_QC_TARGET = Yes`
+### Scan QC PDF Report
 
-Interior / Exterior 기준은 Revit Wall Type Function 기준이며, 도면상 위치 자동 판정 기능은 아닙니다.
+- A3 Landscape와 A2 Landscape 전용 Clean Report Sheet를 지원합니다.
+- QC Plan View와 Summary Panel 영역을 분리하고 Viewport Scale을 자동 조정합니다.
+- Revision Cloud ID와 Summary ID Mapping이 동일한 Top N 결과를 사용합니다.
+- PDF 저장 경로 선택을 지원하며 취소 시 QC View / Sheet / PDF 생성을 진행하지 않습니다.
 
-### A3 / A2 Paper Size 옵션
+### 현재 제한사항
 
-Scan QC PDF Report에서 A3 Landscape와 A2 Landscape를 선택할 수 있습니다.
+- Point Cloud Sampling은 Revit API, RCP/RCS 데이터 밀도와 좌표계 상태에 영향을 받습니다.
+- Active Plan Level 전체 분석은 대규모 프로젝트와 View Visibility 조건에서 추가 검증이 필요합니다.
+- Wall Deviation은 현재 Wall-face corrected distance와 P75/P90 기반 MVP 판정을 사용합니다.
+- Scan QC CSV Export는 Planned 상태로 비활성입니다.
+- Image Report는 아직 정식 Export 기능에 연결되지 않았습니다.
+- Point Cloud 자체 색상과 원본 Source Plan View는 변경하지 않습니다.
 
-- A3 Landscape: 기본값
-- A2 Landscape: 넓은 도면 영역이 필요한 경우 선택
+### 향후 개발 예정
 
-### PDF 저장 경로 선택
-
-Create PDF Report 실행 시 PDF 저장 경로를 사용자가 선택할 수 있습니다.
-
-사용자가 저장 대화상자를 취소하면 Scan QC 실행을 계속하지 않고 Setup UI로 돌아가도록 정리했습니다.
-
-### Scan QC 전용 PDF Report Sheet Layout
-
-기존 회사 Titleblock에 의존하지 않는 Scan QC 전용 Clean Report Sheet 구조를 적용했습니다.
-
-- 좌측 / 중앙: QC Plan View 영역
-- 우측: Summary Panel 영역
-- 도면과 Summary가 겹치지 않도록 레이아웃 분리
-- Viewport Scale 자동 조정
-- 긴 Viewport Title 노출 최소화
-
-### Summary Panel 정리
-
-우측 Summary Panel을 리포트형 구조로 정리했습니다.
-
-- Header
-- Project / Source
-- Tolerance
-- Result Count
-- ID Mapping
-- Method / Note
-
-텍스트 위계, 줄간격, 구분선 위치, 표 컬럼 정렬을 정리해 PDF 캡처용 리포트로 사용할 수 있는 수준을 목표로 개선했습니다.
-
-### Revision Cloud ID 기반 Report 구성
-
-Scan QC 결과 중 상위 Review / Critical 항목만 Revision Cloud ID로 표시합니다.
-
-- 도면에는 A, B, C 형식의 ID만 표시
-- 상세 정보는 PDF Summary Panel의 ID Mapping 표에 정리
-- 도면의 Revision Cloud ID와 Summary ID Mapping 개수가 일치하도록 정리
-
-## 현재 제한사항
-
-- Point Cloud Sampling은 Revit API와 Point Cloud 데이터 상태에 영향을 받습니다.
-- Active Plan Level 전체 분석은 프로젝트 규모와 View Visibility 조건에 따라 추가 안정화가 필요합니다.
-- PDF Report는 MVP 레이아웃이며, 이미지 리포트 / 시트 리포트 품질 고도화가 필요합니다.
-- CSV 보조 출력은 아직 정식 구현 전입니다.
-- Point Cloud 자체 색상 변경은 수행하지 않습니다.
-
-## 다음 개발 예정
-
-1. PDF/Image Report 고도화
+1. PDF / Image Report 품질 고도화
 2. CSV 보조 출력
-3. Active Plan Level 전체 분석 안정화
-4. 재료 면적 산출 Toolkit
+3. Active Plan Level 대규모 분석 안정화
+4. 운영 프로젝트별 Point Cloud Sampling 성능 검증
 
-## 배포 메모
+## v2.8.1 — Scan QC Report Layout
 
-- Revit 2026 + pyRevit 환경 기준입니다.
-- 기존 Sheet QC / View QC / Parameter QC 동작은 유지합니다.
-- Scan QC는 별도 `scan_qc` 모듈 중심으로 유지됩니다.
-- Point Cloud API Probe와 개발용 도구는 릴리즈 UI와 배포 패키지에서 제외합니다.
+- A3 / A2 Scan QC Report Sheet 옵션을 추가했습니다.
+- 전용 Clean Report Sheet와 Summary Panel 레이아웃을 정리했습니다.
+- Source Plan View, Point Cloud Source, Revision Cloud ID Mapping을 PDF에 반영했습니다.
+- PDF 저장 경로 선택과 Viewport Scale 자동 조정 흐름을 추가했습니다.
+
+## 배포 환경
+
+- Revit 2026
+- pyRevit
+- Windows
+- Styled XLSX Report 사용 시 외부 CPython + `openpyxl`
+
+기존 Sheet QC / View QC / Parameter QC 검사 로직과 Point Cloud 자체 그래픽은 변경하지 않습니다.

@@ -76,37 +76,42 @@ Toolkit의 버튼 구성, Rule Set, Export Options, Styled XLSX 환경과 모델
 
 ## Scan QC
 
-`Scan QC`는 Point Cloud 기반 Wall deviation 검토를 목표로 개발 중인 기능입니다.
-기존 Sheet QC, View QC, Parameter QC와 분리된 `scan_qc` 모듈에서 동작합니다.
+`Scan QC`는 Point Cloud와 Revit Wall의 위치 오차를 검토하는 별도 `scan_qc`
+모듈입니다. 기존 Sheet QC, View QC, Parameter QC 검사 로직과 분리되어 있습니다.
 
 현재 지원하는 흐름은 다음과 같습니다.
 
 1. Source Plan View를 선택합니다.
-2. Point Cloud Instance를 선택합니다.
+2. Analysis Point Cloud Source를 선택합니다.
 3. Analysis Scope를 선택합니다.
    - Active Plan Level
    - Selected Walls
-4. Tolerance 값을 확인하거나 이번 실행용으로 입력합니다.
-5. 필요한 출력 옵션을 선택합니다. 현재 PDF/CSV 출력은 계획 단계라 UI에서 비활성화되어 있습니다.
-6. `Run`을 눌러 standards check, working view creation, deviation/preview flow를 실행합니다.
+4. Target Wall Filter를 선택합니다. 여러 필터는 AND 조건으로 적용됩니다.
+5. 필요하면 `SCAN_QC_TARGET` Shared Parameter를 설치합니다.
+6. Pick & Mark / Pick & Clear / Show Targets로 대상 Wall을 관리합니다.
+7. Default Tolerances와 Top N Callouts를 확인합니다.
+8. QC Plan / 3D View와 A3/A2 PDF Report 옵션을 선택합니다.
+9. `Run`을 눌러 standards check, working view creation, deviation flow를 실행합니다.
 
 현재 2D 표현 방식:
 
 - 생성된 `SCAN_QC_PLAN_*` 뷰에 Revision Cloud를 배치합니다.
 - 각 Revision Cloud 중앙에 `A`, `B`, `C` 같은 알파벳 ID를 표시합니다.
-- 상세 정보는 pyRevit Output의 ID mapping과 Wall deviation table에서 확인합니다.
-- 향후 PDF/image report 또는 시트 하단/우측 표로 정리하는 흐름을 계획하고 있습니다.
+- 상세 정보는 pyRevit Output과 PDF Report Summary의 ID Mapping에서 확인합니다.
+- Top N Callouts는 1~20 Slider와 직접 숫자 입력을 지원합니다.
 
-Selected Walls MVP에서는 선택한 Wall 주변의 Point Cloud points를 샘플링하고,
+Selected Walls 모드에서는 선택한 Wall 주변의 Point Cloud points를 샘플링하고,
 PointCloudInstance transform 후보를 비교한 뒤 WallType.Width/2를 보정한 wall-face
 deviation 기준으로 OK/Review/Critical을 판단합니다.
 
 현재 제한:
 
-- Active Plan Level 전체 Wall deviation은 아직 fallback/preview 성격입니다.
-- Scan QC PDF, CSV export는 아직 구현되지 않았고 UI에서도 선택할 수 없습니다.
+- Active Plan Level 전체 분석은 대규모 프로젝트와 View Visibility 조건에서 추가 검증이 필요합니다.
+- Scan QC CSV Export는 Planned 상태로 비활성입니다.
+- Image Report는 아직 정식 Export에 연결되지 않았습니다.
 - Point Cloud 자체 색상은 변경하지 않습니다.
 - 3D preview marker는 현재 비활성화되어 있습니다.
+- 원본 Source Plan View와 Point Cloud 그래픽은 수정하지 않습니다.
 
 ## Export Options
 
