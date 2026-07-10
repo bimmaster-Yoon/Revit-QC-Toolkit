@@ -163,6 +163,7 @@ def render_quick_report(
     summary_data,
     qc_status,
     issue_group_count,
+    key_issue_rows,
     saved_full_csv_path,
     full_csv_error,
     saved_summary_csv_path,
@@ -188,14 +189,49 @@ def render_quick_report(
 
     output.print_html(
         u"""
-        <div style="font-family:Segoe UI, Arial, sans-serif;">
-            <h2 style="color:#263645;">Revit QC Lite</h2>
-            <div style="color:#5F6F7D; margin-bottom:10px;">{0}</div>
-            <div style="color:#5F6F7D; margin-bottom:10px;">
-                Sheet QC + View QC / Parameter QC 제외
+        <div style="font-family:Segoe UI, Arial, sans-serif; color:#263645;">
+            <h2 style="margin-bottom:3px;">QC Lite Dashboard</h2>
+            <div style="color:#5F6F7D; margin-bottom:14px;">{0}</div>
+            <div style="margin-bottom:14px; white-space:nowrap;">
+                <div style="display:inline-block; vertical-align:top; width:21%;
+                    margin-right:8px; padding:12px; background:#F4F6F8;
+                    border:1px solid #D6DDE3; border-top:3px solid #DE712F;">
+                    <b>SHEET QC</b><br><span style="font-size:24px;">{1}</span><br>
+                    <span style="color:#5F6F7D;">{2} sheets checked</span>
+                </div>
+                <div style="display:inline-block; vertical-align:top; width:21%;
+                    margin-right:8px; padding:12px; background:#F4F6F8;
+                    border:1px solid #D6DDE3; border-top:3px solid #DE712F;">
+                    <b>VIEW QC</b><br><span style="font-size:24px;">{3}</span><br>
+                    <span style="color:#5F6F7D;">{4} views checked</span>
+                </div>
+                <div style="display:inline-block; vertical-align:top; width:21%;
+                    margin-right:8px; padding:12px; background:#F4F6F8;
+                    border:1px solid #D6DDE3;">
+                    <b>PARAMETER QC</b><br><span style="font-size:24px;">N/A</span><br>
+                    <span style="color:#5F6F7D;">Run DOC QC</span>
+                </div>
+                <div style="display:inline-block; vertical-align:top; width:21%;
+                    padding:12px; background:#F4F6F8;
+                    border:1px solid #D6DDE3;">
+                    <b>SCAN QC</b><br><span style="font-size:24px;">N/A</span><br>
+                    <span style="color:#5F6F7D;">Run Scan QC</span>
+                </div>
+            </div>
+            <div style="padding:10px 12px; background:#FFF1E6;
+                border:1px solid #E8C8B0; margin-bottom:12px;">
+                <b>ISSUE COUNT: {5}</b> &nbsp; | &nbsp; STATUS: {6}
             </div>
         </div>
-        """.format(html_escape(version))
+        """.format(
+            html_escape(version),
+            summary_data["sheet_issues"],
+            summary_data["checked_sheets"],
+            summary_data["view_issues"],
+            summary_data["checked_views"],
+            summary_data["total_issues"],
+            html_escape(qc_status)
+        )
     )
 
     output.print_html_table(
@@ -205,6 +241,34 @@ def render_quick_report(
         column_widths=["260px", "220px"],
         table_width_style="width:500px",
         row_striping=True
+    )
+
+    if key_issue_rows:
+        output.print_html_table(
+            table_data=key_issue_rows,
+            title="Top Issues",
+            columns=[
+                "Category",
+                "Item Type",
+                "Item Name",
+                "Severity",
+                "QC Item",
+                "Issue Message"
+            ],
+            column_widths=["100px", "140px", "260px", "80px", "160px", "220px"],
+            table_width_style="width:100%",
+            row_striping=True
+        )
+
+    output.print_html(
+        u"""
+        <div style="margin-top:12px; padding:10px; color:#5F6F7D;
+            border-left:3px solid #DE712F; background:#F8F9FA;">
+            <b>Next Actions</b><br>
+            전체 Parameter 검토는 <b>DOC QC</b>, 저장된 결과 확인은
+            <b>Report</b> 버튼을 사용하세요.
+        </div>
+        """
     )
 
     render_export_results(

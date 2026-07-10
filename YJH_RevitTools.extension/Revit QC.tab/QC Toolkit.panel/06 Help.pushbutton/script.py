@@ -1,61 +1,132 @@
 # -*- coding: utf-8 -*-
 
+import os
+import sys
+import io
+from datetime import datetime
+
 import clr
 
 clr.AddReference("System.Drawing")
 clr.AddReference("System.Windows.Forms")
 
-from System.Drawing import (
-    Color,
-    ColorTranslator,
-    ContentAlignment,
-    Font,
-    FontStyle,
-    Size,
-)
+from System.Drawing import Color, ContentAlignment, FontStyle, Size
 from System.Windows.Forms import (
-    AnchorStyles,
-    AutoScaleMode,
-    Button,
-    DockStyle,
-    FlatStyle,
-    FlowDirection,
-    FlowLayoutPanel,
-    Form,
-    FormBorderStyle,
-    FormStartPosition,
-    GroupBox,
-    Label,
-    Padding,
-    Panel,
-    RowStyle,
-    SizeType,
-    TableLayoutPanel,
-    TableLayoutPanelCellBorderStyle,
-    ColumnStyle,
+    AutoScaleMode, AutoSizeMode, BorderStyle, Button, ColumnStyle, DockStyle, FlatStyle,
+    FlowDirection, FlowLayoutPanel, Form, FormBorderStyle, FormStartPosition,
+    Label, Padding, Panel, RowStyle, SizeType, TableLayoutPanel
 )
 
-from pyrevit import forms
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+EXTENSION_DIR = os.path.abspath(
+    os.path.join(SCRIPT_DIR, os.pardir, os.pardir, os.pardir)
+)
+LIB_DIR = os.path.join(EXTENSION_DIR, "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+from qc_ui_style import (
+    BORDER_COLOR, BUTTON_NAVY_COLOR, HELP_BACKGROUND_COLOR, LIGHT_FILL_COLOR,
+    MUTED_COLOR, NAVY_COLOR, ORANGE_COLOR, WARNING_BACKGROUND_COLOR,
+    BUTTON_GAP, FOOTER_BUTTON_HEIGHT, FOOTER_BUTTON_WIDTH, FOOTER_HEIGHT,
+    HEADER_BOTTOM_MARGIN, HEADER_TOP_PADDING, OUTER_MARGIN, SECTION_GAP,
+    apply_primary_button_style, configure_content_scroll, get_preferred_font
+)
+from ui_close_profiler import create_ui_close_profile
 
 
-TEXT_NAVY = ColorTranslator.FromHtml("#263645")
-SOFT_NAVY = ColorTranslator.FromHtml("#4A5B6A")
-BUTTON_NAVY = ColorTranslator.FromHtml("#536777")
-BORDER_GRAY = ColorTranslator.FromHtml("#D6DDE3")
-LIGHT_BORDER = ColorTranslator.FromHtml("#E1E5E8")
-CARD_FILL = ColorTranslator.FromHtml("#F4F6F8")
-MUTED_TEXT = ColorTranslator.FromHtml("#5F6F7D")
-READY_GREEN = ColorTranslator.FromHtml("#1E7A3A")
-SAFETY_FILL = ColorTranslator.FromHtml("#F2F8F3")
-SAFETY_BORDER = ColorTranslator.FromHtml("#CFE3D4")
-
-
-def get_font(size, bold=False):
-    style = FontStyle.Bold if bold else FontStyle.Regular
-    try:
-        return Font("Malgun Gothic", size, style)
-    except Exception:
-        return Font("Segoe UI", size, style)
+HELP_SECTIONS = [
+    (
+        u"Getting Started",
+        u"Toolkit Overview",
+        u"Revit QC Toolkit은 Sheet, View, Parameter 및 Point Cloud 기반 모델 "
+        u"정합성을 검토하는 pyRevit 도구입니다.",
+        [
+            (u"사용 순서", u"1. QC Settings에서 Rule Set과 Excel 환경을 확인합니다.\r\n"
+             u"2. 빠른 상태 확인은 QC Lite, 전체 문서 검토는 DOC QC를 실행합니다.\r\n"
+             u"3. Point Cloud 검토는 Scan QC에서 Source Plan View와 Point Cloud를 선택합니다.\r\n"
+             u"4. 저장 결과는 Report 버튼으로 다시 열 수 있습니다."),
+            (u"Model Safety", u"DOC QC와 QC Lite는 read-only입니다. Scan QC는 선택한 "
+             u"옵션에 따라 SCAN_QC_* 작업 View, Revision Cloud와 Report Sheet를 생성할 수 있습니다."),
+            (u"Toolkit Info", u"Version: v2.6\r\npyRevit Extension-based Revit QC Toolkit\r\n"
+             u"Developed by JeongHo Yoon | Contact: yjhbim@gmail.com")
+        ]
+    ),
+    (
+        u"DOC QC",
+        u"DOC QC",
+        u"Sheet / View / Parameter 전체 도면 패키지를 현재 Rule Set으로 검토합니다.",
+        [
+            (u"사용 순서", u"Setup에서 QC Categories, Rule Set, Report Style과 저장 폴더를 "
+             u"확인한 뒤 Run을 누릅니다."),
+            (u"주요 옵션", u"Sheet QC: 번호·이름·배치 View\r\nView QC: 이름·축척·Template·Sheet 배치\r\n"
+             u"Parameter QC: 필수 Shared Parameter와 빈 값\r\nNaming / View Placement: 기존 Sheet·View 규칙에 포함"),
+            (u"제한사항", u"현재 Review Scope 실행 범위는 Current Project입니다. DOC QC PDF Summary는 "
+             u"아직 기존 출력 엔진에 연결되지 않았습니다.")
+        ]
+    ),
+    (
+        u"QC Lite",
+        u"QC Lite",
+        u"Sheet와 View의 주요 Issue를 빠르게 확인하는 프로젝트 상태 Dashboard입니다.",
+        [
+            (u"Dashboard", u"Sheet / View Issue Count, Severity Count와 Top Issues를 카드형으로 표시합니다."),
+            (u"다음 작업", u"Parameter까지 검토하려면 DOC QC를 실행하고, 저장된 결과는 Report로 엽니다."),
+            (u"주의사항", u"QC Lite의 Parameter QC와 Scan QC 카드는 상태 안내용이며 N/A로 표시됩니다.")
+        ]
+    ),
+    (
+        u"Scan QC",
+        u"Scan QC",
+        u"Point Cloud를 기준으로 Wall Deviation을 샘플링하고 QC View, Revision Cloud ID와 PDF Report를 생성합니다.",
+        [
+            (u"사용 순서", u"Analysis Scope → Source Plan View → Target Wall Filter → Analysis Point Cloud Source → "
+             u"Tolerance → Output Options 순서로 설정합니다."),
+            (u"Target Wall Filter", u"Interior / Exterior는 도면상 위치가 아니라 Wall Type Function 기준입니다.\r\n"
+             u"New Construction은 Phase Created 기준입니다.\r\nSCAN_QC_TARGET은 사용자 Parameter 기준입니다.\r\n"
+             u"여러 필터는 AND 조건으로 적용됩니다."),
+            (u"Point Cloud / PDF", u"Analysis Point Cloud Source는 실제 deviation sampling 기준입니다. "
+             u"PDF Report는 QC Plan View를 내부적으로 필요로 하며 자동 생성할 수 있습니다."),
+            (u"주의사항", u"Point Cloud 색상은 변경하지 않습니다. 실제 프로젝트 적용 전 테스트 모델에서 "
+             u"좌표계, 벽 두께, Phase와 Wall Type Function을 확인하세요.")
+        ]
+    ),
+    (
+        u"QC Settings",
+        u"QC Settings",
+        u"Excel Report 환경과 프로젝트별 QC Rule Set을 관리합니다.",
+        [
+            (u"Excel Report", u"Set Python으로 안정적인 python.exe를 지정하고 Test로 openpyxl 상태를 확인합니다. "
+             u"Clear는 저장된 외부 Python 경로를 제거합니다."),
+            (u"QC Rules", u"Rule Set을 선택하고 Use This를 누릅니다. Copy로 새 JSON preset을 만들고 "
+             u"Open Rule Folder에서 수정한 뒤 Reload합니다."),
+            (u"Rule Count", u"Sheet / View / Parameter 규칙과 Required Parameter 개수를 동일한 카드에서 확인합니다."),
+            (u"문제 확인", u"Details에서 환경 상세를 보고 Open Log로 XLSX helper debug log를 확인합니다.")
+        ]
+    ),
+    (
+        u"Reports",
+        u"Reports",
+        u"DOC QC와 QC Lite는 CSV / Styled XLSX를, Scan QC는 전용 PDF Report를 생성합니다.",
+        [
+            (u"DOC QC", u"Full CSV는 개별 항목, Summary CSV는 그룹 결과, Styled XLSX는 공유용 보고서입니다."),
+            (u"Scan QC", u"A3/A2 전용 Report Sheet에 QC Plan View와 Revision Cloud ID Mapping을 배치합니다."),
+            (u"Report 버튼", u"가장 최근에 정상 생성된 XLSX 또는 CSV Report를 기본 프로그램으로 엽니다."),
+            (u"저장 취소", u"파일 또는 폴더 선택을 취소하면 설정과 파일을 변경하지 않고 조용히 돌아갑니다.")
+        ]
+    ),
+    (
+        u"Troubleshooting",
+        u"Troubleshooting",
+        u"실행 전 환경과 모델 기준을 순서대로 확인하면 대부분의 문제를 빠르게 분리할 수 있습니다.",
+        [
+            (u"XLSX가 생성되지 않음", u"QC Settings에서 Python / Excel Library / Excel Report가 Ready인지 확인합니다."),
+            (u"Scan QC 결과가 없음", u"Source Plan View, Analysis Point Cloud Source, Target Wall Filter, Wall Type Function과 Phase를 확인합니다."),
+            (u"PDF가 생성되지 않음", u"저장 경로 권한, QC Plan View 생성 여부와 Report Sheet 생성 경고를 확인합니다."),
+            (u"UI가 잘림", u"창을 확대하거나 내부 Scroll을 사용합니다. Windows 배율이 높은 경우 pyRevit Reload 후 다시 확인합니다.")
+        ]
+    )
+]
 
 
 def safe_text(value):
@@ -70,440 +141,290 @@ def safe_text(value):
 
 class HelpForm(Form):
     def __init__(self):
-        self.Text = "Revit QC Toolkit 도움말"
-        self.ClientSize = Size(1200, 900)
-        self.MinimumSize = Size(1080, 780)
+        Form.__init__(self)
+        self.SuspendLayout()
+        self.Text = "Revit QC Toolkit Help"
+        self.ClientSize = Size(1240, 1040)
+        self.MinimumSize = Size(1140, 920)
         self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = True
         self.MinimizeBox = False
         self.ShowInTaskbar = False
-        self.AutoScroll = False
-        self.AutoScaleMode = AutoScaleMode.Font
+        self.AutoScaleMode = AutoScaleMode.Dpi
         self.BackColor = Color.White
-        self.ForeColor = TEXT_NAVY
-        self.Font = get_font(10.0)
-
+        self.ForeColor = NAVY_COLOR
+        self.Font = get_preferred_font(10.0)
+        self.nav_font_regular = get_preferred_font(10.0, FontStyle.Regular)
+        self.nav_font_bold = get_preferred_font(10.0, FontStyle.Bold)
+        self.detail_title_font = get_preferred_font(16.0, FontStyle.Bold)
+        self.card_heading_font = get_preferred_font(10.5, FontStyle.Bold)
+        self.card_body_font = get_preferred_font(10.0, FontStyle.Regular)
+        self.nav_buttons = []
+        self.detail_cards = []
+        self.detail_labels = []
         self._build_layout()
-        self._build_content()
-        self.content_panel.SizeChanged += self._resize_content_cards
+        self._show_section(0)
+        self.Shown += self._configure_scroll_fallback
+        self.ResumeLayout(True)
+        self.PerformLayout()
 
     def _build_layout(self):
-        self.root_layout = TableLayoutPanel()
-        self.root_layout.Dock = DockStyle.Fill
-        self.root_layout.Padding = Padding(24)
-        self.root_layout.ColumnCount = 1
-        self.root_layout.RowCount = 3
-        self.root_layout.ColumnStyles.Add(
-            ColumnStyle(SizeType.Percent, 100.0)
+        root = TableLayoutPanel()
+        root.Dock = DockStyle.Fill
+        root.Padding = Padding(
+            OUTER_MARGIN,
+            HEADER_TOP_PADDING,
+            OUTER_MARGIN,
+            OUTER_MARGIN
         )
-        self.root_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 144.0))
-        self.root_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        self.root_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 72.0))
-        self.Controls.Add(self.root_layout)
+        root.ColumnCount = 1
+        root.RowCount = 3
+        root.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        root.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        root.RowStyles.Add(RowStyle(SizeType.Absolute, float(FOOTER_HEIGHT)))
+        self.Controls.Add(root)
 
-        header = TableLayoutPanel()
-        header.Dock = DockStyle.Fill
-        header.ColumnCount = 1
-        header.RowCount = 2
-        header.RowStyles.Add(RowStyle(SizeType.Absolute, 46.0))
-        header.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        header.Margin = Padding(0, 0, 0, 20)
-        self.root_layout.Controls.Add(header, 0, 0)
+        header_panel = Panel()
+        header_panel.Dock = DockStyle.Fill
+        header_panel.AutoSize = True
+        header_panel.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        root.Controls.Add(header_panel, 0, 0)
+        header = Label()
+        header.Text = "Revit QC Toolkit Help\r\n기능별 사용 순서와 실무 기준을 확인하세요."
+        header.Dock = DockStyle.Top
+        header.AutoSize = True
+        header.MinimumSize = Size(0, 72)
+        header.Font = get_preferred_font(16.0, FontStyle.Bold)
+        header.ForeColor = NAVY_COLOR
+        header_panel.Controls.Add(header)
 
-        title = Label()
-        title.Text = "Revit QC Toolkit 도움말"
-        title.Dock = DockStyle.Fill
-        title.AutoSize = False
-        title.Font = get_font(17.5, True)
-        title.ForeColor = TEXT_NAVY
-        title.TextAlign = ContentAlignment.MiddleLeft
-        header.Controls.Add(title, 0, 0)
-
-        subtitle_area = TableLayoutPanel()
-        subtitle_area.Dock = DockStyle.Fill
-        subtitle_area.ColumnCount = 1
-        subtitle_area.RowCount = 3
-        subtitle_area.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
-        subtitle_area.RowStyles.Add(RowStyle(SizeType.Absolute, 8.0))
-        subtitle_area.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
-        subtitle_area.Margin = Padding(0)
-        header.Controls.Add(subtitle_area, 0, 1)
-
-        subtitle_line_1 = Label()
-        subtitle_line_1.Text = "Sheet, View, Parameter 검토 기준을 설정하고"
-        subtitle_line_1.Dock = DockStyle.Fill
-        subtitle_line_1.AutoSize = False
-        subtitle_line_1.Font = get_font(11.5)
-        subtitle_line_1.ForeColor = MUTED_TEXT
-        subtitle_line_1.TextAlign = ContentAlignment.MiddleLeft
-        subtitle_line_1.UseCompatibleTextRendering = True
-        subtitle_area.Controls.Add(subtitle_line_1, 0, 0)
-
-        subtitle_line_2 = Label()
-        subtitle_line_2.Text = (
-            "결과를 CSV / Styled Excel Report로 출력하는 pyRevit 기반 QC 도구입니다."
-        )
-        subtitle_line_2.Dock = DockStyle.Fill
-        subtitle_line_2.AutoSize = False
-        subtitle_line_2.Font = get_font(11.5)
-        subtitle_line_2.ForeColor = MUTED_TEXT
-        subtitle_line_2.TextAlign = ContentAlignment.MiddleLeft
-        subtitle_line_2.UseCompatibleTextRendering = True
-        subtitle_area.Controls.Add(subtitle_line_2, 0, 2)
-
-        self.content_panel = FlowLayoutPanel()
-        self.content_panel.Dock = DockStyle.Fill
-        self.content_panel.AutoScroll = True
-        self.content_panel.FlowDirection = FlowDirection.TopDown
-        self.content_panel.WrapContents = False
-        self.content_panel.Padding = Padding(0, 0, 8, 0)
-        self.content_panel.Margin = Padding(0)
-        self.content_panel.BackColor = Color.White
-        self.root_layout.Controls.Add(self.content_panel, 0, 1)
-
-        bottom_panel = FlowLayoutPanel()
-        bottom_panel.Dock = DockStyle.Fill
-        bottom_panel.AutoSize = False
-        bottom_panel.FlowDirection = FlowDirection.RightToLeft
-        bottom_panel.WrapContents = False
-        bottom_panel.Padding = Padding(0, 15, 0, 15)
-        bottom_panel.Margin = Padding(0)
-        self.root_layout.Controls.Add(bottom_panel, 0, 2)
-
-        close_button = Button()
-        close_button.Text = "Close"
-        close_button.AutoSize = False
-        close_button.Size = Size(150, 42)
-        close_button.Font = get_font(10.0)
-        close_button.TextAlign = ContentAlignment.MiddleCenter
-        close_button.FlatStyle = FlatStyle.Flat
-        close_button.FlatAppearance.BorderSize = 1
-        close_button.FlatAppearance.BorderColor = BUTTON_NAVY
-        close_button.BackColor = BUTTON_NAVY
-        close_button.ForeColor = Color.White
-        close_button.UseVisualStyleBackColor = False
-        close_button.Margin = Padding(0)
-        close_button.Click += self._close
-        bottom_panel.Controls.Add(close_button)
-        self.CancelButton = close_button
-
-    def _card_width(self):
-        return max(920, self.content_panel.ClientSize.Width - 36)
-
-    def _estimate_text_lines(self, text, chars_per_line=72):
-        line_count = 0
-        for line in text.replace(u"\r", u"").split(u"\n"):
-            if not line:
-                line_count += 1
-            else:
-                line_count += max(1, (len(line) + chars_per_line - 1) // chars_per_line)
-        return line_count
-
-    def _create_card(
-        self,
-        title,
-        text,
-        minimum_height,
-        safety=False,
-        item_gap=12,
-        paragraph_gap=12
-    ):
-        card = GroupBox()
-        card.Text = title
-        card.Width = self._card_width()
-        card.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-        card.Margin = Padding(0, 0, 0, 26)
-        card.Padding = Padding(24, 18, 24, 28)
-        card.Font = get_font(13.0, True)
-        card.ForeColor = READY_GREEN if safety else SOFT_NAVY
-        card.BackColor = SAFETY_FILL if safety else CARD_FILL
-
-        body = FlowLayoutPanel()
+        body = TableLayoutPanel()
         body.Dock = DockStyle.Fill
-        body.AutoSize = False
-        body.AutoScroll = False
-        body.FlowDirection = FlowDirection.TopDown
-        body.WrapContents = False
-        body.BackColor = SAFETY_FILL if safety else CARD_FILL
-        body.Padding = Padding(14, 12, 14, 18)
+        body.ColumnCount = 2
+        body.RowCount = 1
+        body.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 250.0))
+        body.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        body.Margin = Padding(0, HEADER_BOTTOM_MARGIN, 0, 0)
+        root.Controls.Add(body, 0, 1)
 
-        content_height = body.Padding.Top + body.Padding.Bottom
-        normalized_text = text.replace(u"\r", u"")
-        for line in normalized_text.split(u"\n"):
-            if not line:
-                spacer = Panel()
-                spacer.Width = max(700, card.Width - 96)
-                spacer.Height = paragraph_gap
-                spacer.Margin = Padding(0)
-                spacer.BackColor = body.BackColor
-                body.Controls.Add(spacer)
-                content_height += paragraph_gap
-                continue
+        navigation = FlowLayoutPanel()
+        navigation.Dock = DockStyle.Fill
+        navigation.FlowDirection = FlowDirection.TopDown
+        navigation.WrapContents = False
+        navigation.AutoScroll = False
+        navigation.Padding = Padding(0, 8, 16, 12)
+        navigation.BackColor = Color.White
+        body.Controls.Add(navigation, 0, 0)
+        for index, section in enumerate(HELP_SECTIONS):
+            button = Button()
+            button.Text = section[0]
+            button.Width = 214
+            button.Height = 48
+            button.Margin = Padding(0, 0, 0, 10)
+            button.FlatStyle = FlatStyle.Flat
+            button.FlatAppearance.BorderSize = 1
+            button.FlatAppearance.BorderColor = BORDER_COLOR
+            button.BackColor = Color.White
+            button.ForeColor = NAVY_COLOR
+            button.Font = self.nav_font_regular
+            button.TextAlign = ContentAlignment.MiddleLeft
+            button.Padding = Padding(14, 0, 8, 0)
+            button.Tag = index
+            button.Click += self._navigation_click
+            navigation.Controls.Add(button)
+            self.nav_buttons.append(button)
 
-            wrapped_lines = self._estimate_text_lines(line)
-            line_height = max(30, (wrapped_lines * 24) + 8)
-            line_label = Label()
-            line_label.Text = line
-            line_label.AutoSize = False
-            line_label.Width = max(700, card.Width - 96)
-            line_label.Height = line_height
-            line_label.Font = get_font(10.5)
-            line_label.ForeColor = READY_GREEN if safety else TEXT_NAVY
-            line_label.BackColor = body.BackColor
-            line_label.Margin = Padding(0, 0, 0, item_gap)
-            line_label.Padding = Padding(0, 2, 0, 2)
-            line_label.TextAlign = ContentAlignment.TopLeft
-            line_label.UseCompatibleTextRendering = True
-            body.Controls.Add(line_label)
-            self.text_labels.append(line_label)
-            content_height += line_height + item_gap
+        self.detail_host = Panel()
+        self.detail_host.Dock = DockStyle.Fill
+        self.detail_host.AutoScroll = False
+        self.detail_host.BackColor = HELP_BACKGROUND_COLOR
+        self.detail_host.BorderStyle = BorderStyle.FixedSingle
+        body.Controls.Add(self.detail_host, 1, 0)
 
-        card.Height = max(minimum_height, 70 + content_height)
-        card.Controls.Add(body)
-        return card
+        self.detail_panel = FlowLayoutPanel()
+        self.detail_panel.Dock = DockStyle.Top
+        self.detail_panel.AutoSize = True
+        self.detail_panel.FlowDirection = FlowDirection.TopDown
+        self.detail_panel.WrapContents = False
+        self.detail_panel.AutoScroll = False
+        self.detail_panel.Padding = Padding(18, 8, 18, 12)
+        self.detail_panel.BackColor = HELP_BACKGROUND_COLOR
+        self.detail_panel.SizeChanged += self._resize_cards
+        self.detail_host.Controls.Add(self.detail_panel)
 
-    def _create_table_card(
-        self,
-        title,
-        rows,
-        minimum_height,
-        headers,
-        minimum_row_height
-    ):
-        card = GroupBox()
-        card.Text = title
-        card.Width = self._card_width()
-        row_heights = []
-        for row_data in rows:
-            description_length = len(row_data[1])
-            row_heights.append(
-                78.0 if description_length > 44 else minimum_row_height
-            )
-        content_height = 50.0 + sum(row_heights)
-        card.Height = max(minimum_height, int(90.0 + content_height))
-        card.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-        card.Margin = Padding(0, 0, 0, 26)
-        card.Padding = Padding(24, 18, 24, 28)
-        card.Font = get_font(13.0, True)
-        card.ForeColor = SOFT_NAVY
-        card.BackColor = CARD_FILL
-
-        table = TableLayoutPanel()
-        table.Dock = DockStyle.Fill
-        table.ColumnCount = 2
-        table.RowCount = len(rows) + 1
-        table.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 260.0))
-        table.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        table.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
-        table.BackColor = BORDER_GRAY
-        table.RowStyles.Add(RowStyle(SizeType.Absolute, 50.0))
-        for row_height in row_heights:
-            table.RowStyles.Add(RowStyle(SizeType.Absolute, row_height))
-        card.Controls.Add(table)
-
-        table.Controls.Add(self._create_table_header(headers[0]), 0, 0)
-        table.Controls.Add(self._create_table_header(headers[1]), 1, 0)
-
-        for row_index, row_data in enumerate(rows):
-            name_label = self._create_table_label(
-                row_data[0],
-                True,
-                row_index
-            )
-            value_label = self._create_table_label(
-                row_data[1],
-                False,
-                row_index
-            )
-            table.Controls.Add(name_label, 0, row_index + 1)
-            table.Controls.Add(value_label, 1, row_index + 1)
-
-        return card
-
-    def _create_table_header(self, text):
-        label = Label()
-        label.Text = text
-        label.Dock = DockStyle.Fill
-        label.AutoSize = False
-        label.Font = get_font(10.5, True)
-        label.ForeColor = Color.White
-        label.BackColor = BUTTON_NAVY
-        label.Padding = Padding(14, 10, 14, 10)
-        label.TextAlign = ContentAlignment.MiddleLeft
-        label.UseCompatibleTextRendering = True
-        return label
-
-    def _create_table_label(self, text, bold, row_index):
-        label = Label()
-        label.Text = text
-        label.Dock = DockStyle.Fill
-        label.AutoSize = False
-        label.Font = get_font(10.25, bold)
-        label.ForeColor = TEXT_NAVY
-        label.BackColor = Color.White if row_index % 2 == 0 else CARD_FILL
-        label.Padding = Padding(14, 10, 14, 10)
-        label.TextAlign = ContentAlignment.MiddleLeft
-        label.UseCompatibleTextRendering = True
-        return label
-
-    def _build_content(self):
-        self.cards = []
-        self.text_labels = []
-
-        self._add_card(self._create_card(
-            "1. 기본 사용 흐름",
-            "1. QC Settings에서 Excel Report 상태를 확인합니다.\r\n"
-            "2. 프로젝트에 맞는 Rule Set을 선택하고 Use This를 누릅니다.\r\n"
-            "3. DOC QC 또는 QC Lite를 실행합니다.\r\n"
-            "4. Export Options에서 저장 형식을 선택합니다.\r\n"
-            "5. 결과를 pyRevit output 또는 CSV / Styled Excel Report로 확인합니다.",
-            330
-        ))
-
-        self._add_card(self._create_table_card(
-            "2. 주요 버튼",
-            [
-                ("DOC QC", "Sheet / View / Parameter 전체 도면 QC를 실행합니다."),
-                ("QC Lite", "주요 항목 요약 검토를 빠르게 실행합니다."),
-                ("Scan QC", "Point Cloud 기반 Wall Deviation, Revision Cloud ID, PDF Report 흐름을 실행합니다."),
-                ("QC Settings", "Rule Set, 출력 옵션, Scan QC 설정을 관리합니다."),
-                ("Report", "마지막 QC Report를 엽니다."),
-                ("Help", "사용 가이드를 엽니다."),
-            ],
-            430,
-            ("Button", "사용 목적"),
-            58.0
-        ))
-
-        self._add_card(self._create_table_card(
-            "3. QC Settings에서 할 수 있는 것",
-            [
-                ("Excel Report", "Styled Excel Report 생성을 위한 Python 상태를 확인합니다."),
-                ("QC Rules", "프로젝트 또는 회사 기준에 맞는 Rule Set을 선택합니다."),
-                ("Rule Count", "현재 Rule Set에 포함된 검사 항목 수를 확인합니다."),
-                ("Details", "Python 경로, 설정 파일, Debug Log 등 상세 정보를 확인합니다."),
-            ],
-            320,
-            ("항목", "설명"),
-            64.0
-        ))
-
-        self._add_card(self._create_card(
-            "4. Rule Set 만드는 방법",
-            "Rule Set은 Sheet, View, Parameter 검토 기준을 담은 설정 파일입니다. "
-            "회사나 프로젝트 기준이 달라지면 기존 Rule Set을 복사해 수정할 수 있습니다.\r\n\r\n"
-            "1. QC Settings에서 기준이 될 Rule Set을 선택합니다.\r\n"
-            "2. Copy 버튼으로 새 Rule Set 파일을 만듭니다.\r\n"
-            "3. Open Rule Folder로 config 폴더를 엽니다.\r\n"
-            "4. JSON 파일에서 검사 항목, Severity, Recommendation을 수정합니다.\r\n"
-            "5. 새 Rule Set을 선택하고 Use This를 누릅니다.\r\n"
-            "6. DOC QC로 결과가 의도대로 나오는지 확인합니다.\r\n\r\n"
-            "Rule Set의 기준은 회사 또는 실무자가 정의하고, JSON은 그 기준을 툴킷이 "
-            "읽을 수 있게 정리한 형식입니다.",
-            470
-        ))
-
-        self._add_card(self._create_table_card(
-            "5. Rule Set에서 조정할 수 있는 항목",
-            [
-                ("Sheet Rules", "배치 View 없는 Sheet, Sheet 이름 규칙, Copy 문구 확인"),
-                ("View Rules", "View 이름 규칙, Sheet 배치 여부, 임시 View 확인"),
-                ("Parameter Rules", "RoomType, ITEMGROUP 등 필수 Parameter 누락 확인"),
-                ("Severity", "High / Medium / Low 중요도 구분"),
-                ("Recommendation", "검토자가 확인해야 할 조치 문구"),
-            ],
-            360,
-            ("항목", "예시"),
-            64.0
-        ))
-
-        self._add_card(self._create_table_card(
-            "6. Export Options",
-            [
-                ("Full CSV", "개별 검토 항목을 모두 포함한 상세 데이터입니다."),
-                ("Summary CSV", "반복 항목을 그룹화한 요약 데이터입니다."),
-                ("Styled Excel Report", "검토와 공유를 위한 보고서형 XLSX 파일입니다."),
-                ("View Only", "저장하지 않고 pyRevit output에서 결과만 확인합니다."),
-            ],
-            330,
-            ("Option", "설명"),
-            66.0
-        ))
-
-        self._add_card(self._create_card(
-            "7. 새 컴퓨터에서 사용할 때",
-            "새 PC에서는 pyRevit Extension을 연결한 뒤 QC Settings에서 "
-            "Excel Report 상태를 먼저 확인합니다.\r\n\r\n"
-            "Excel Report가 Ready가 아니면 Set Python으로 python.exe를 선택하고 "
-            "Test를 누릅니다.\r\n\r\n"
-            "장기 사용에는 임시 경로가 아닌 안정적인 로컬 Python 또는\r\n"
-            "프로젝트 전용 Python 환경을 권장합니다.",
-            350,
-            False,
-            16,
-            24
-        ))
-
-        self._add_card(self._create_card(
-            "8. Model Safety",
-            "• DOC QC와 QC Lite는 read-only 검사이며 Revit 모델을 수정하지 않습니다.\r\n"
-            "• Scan QC는 개발 중인 별도 기능이며 선택 옵션에 따라 SCAN_QC_* 작업 View, Revision Cloud, ID TextNote를 생성할 수 있습니다.\r\n"
-            "• 실제 프로젝트 적용 전에는 테스트 모델에서 Source Plan View, Point Cloud, Selected Walls 흐름을 먼저 검증하세요.",
-            330,
-            True
-        ))
-
-        footer = Label()
-        footer.Text = "Version: v2.6\r\n\r\npyRevit Extension-based Revit QC Toolkit"
-        footer.Width = self._card_width()
-        footer.Height = 94
+        footer_panel = Panel()
+        footer_panel.Dock = DockStyle.Bottom
+        footer_panel.AutoSize = False
+        footer_panel.Height = FOOTER_HEIGHT
+        footer_panel.MinimumSize = Size(0, FOOTER_HEIGHT)
+        footer_panel.MaximumSize = Size(0, FOOTER_HEIGHT)
+        footer_panel.Padding = Padding(0, 10, 0, 14)
+        root.Controls.Add(footer_panel, 0, 2)
+        footer = FlowLayoutPanel()
+        footer.Dock = DockStyle.Right
         footer.AutoSize = False
-        footer.Font = get_font(10.0)
-        footer.ForeColor = SOFT_NAVY
-        footer.Margin = Padding(0, 0, 0, 12)
-        footer.Padding = Padding(4, 8, 4, 8)
-        self.content_panel.Controls.Add(footer)
-        self.cards.append(footer)
+        footer.Width = FOOTER_BUTTON_WIDTH
+        footer.FlowDirection = FlowDirection.LeftToRight
+        footer.WrapContents = False
+        footer.Padding = Padding(0)
+        footer_panel.Controls.Add(footer)
+        close = Button()
+        close.Text = "Close"
+        close.AutoSize = False
+        close.Dock = getattr(DockStyle, "None")
+        close.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
+        close.Margin = Padding(0)
+        close.Font = get_preferred_font(9.5)
+        apply_primary_button_style(close)
+        close.Click += self._close
+        footer.Controls.Add(close)
+        self.CancelButton = close
 
-        contact_label = Label()
-        contact_label.Text = (
-            "Developed by JeongHo Yoon  |  Contact: yjhbim@gmail.com"
+    def _navigation_click(self, sender, event_args):
+        self._show_section(int(sender.Tag))
+
+    def _show_section(self, index):
+        self.detail_panel.SuspendLayout()
+        self._dispose_detail_controls()
+        self.detail_cards = []
+        self.detail_labels = []
+        for button_index, button in enumerate(self.nav_buttons):
+            selected = button_index == index
+            button.BackColor = WARNING_BACKGROUND_COLOR if selected else Color.White
+            button.FlatAppearance.BorderColor = ORANGE_COLOR if selected else BORDER_COLOR
+            button.Font = self.nav_font_bold if selected else self.nav_font_regular
+
+        section = HELP_SECTIONS[index]
+        title = Label()
+        title.Text = section[1]
+        title.Width = self._detail_width()
+        title.Height = 50
+        title.Font = self.detail_title_font
+        title.ForeColor = NAVY_COLOR
+        title.Margin = Padding(0, 0, 0, 6)
+        self.detail_panel.Controls.Add(title)
+        self.detail_cards.append(title)
+
+        intro = self._make_card(u"Overview", section[2], True)
+        self.detail_panel.Controls.Add(intro)
+        self.detail_cards.append(intro)
+        for card_title, card_text in section[3]:
+            card = self._make_card(card_title, card_text, False)
+            self.detail_panel.Controls.Add(card)
+            self.detail_cards.append(card)
+        self.detail_panel.ResumeLayout(True)
+        if self.Visible:
+            self._configure_scroll_fallback(None, None)
+
+    def _detail_width(self):
+        return max(620, self.detail_host.ClientSize.Width - 38)
+
+    def _configure_scroll_fallback(self, sender, event_args):
+        configure_content_scroll(
+            self,
+            self.detail_host,
+            self.detail_panel,
+            0.94
         )
-        contact_label.Width = self._card_width()
-        contact_label.Height = 38
-        contact_label.AutoSize = False
-        contact_label.Font = get_font(9.0)
-        contact_label.ForeColor = MUTED_TEXT
-        contact_label.TextAlign = ContentAlignment.MiddleLeft
-        contact_label.Margin = Padding(0, 0, 0, 20)
-        contact_label.Padding = Padding(4, 0, 4, 0)
-        self.content_panel.Controls.Add(contact_label)
-        self.cards.append(contact_label)
 
-    def _add_card(self, card):
-        self.content_panel.Controls.Add(card)
-        self.cards.append(card)
+    def _make_card(self, title, text, accent):
+        panel = TableLayoutPanel()
+        panel.Width = self._detail_width()
+        panel.AutoSize = True
+        panel.ColumnCount = 1
+        panel.RowCount = 2
+        panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        panel.BackColor = Color.White
+        panel.Margin = Padding(0, 0, 0, 10)
+        panel.Padding = Padding(14, 8, 14, 10)
+        heading = Label()
+        heading.Text = title
+        heading.Dock = DockStyle.Fill
+        heading.AutoSize = True
+        heading.MinimumSize = Size(0, 28)
+        heading.Font = self.card_heading_font
+        heading.ForeColor = ORANGE_COLOR if accent else NAVY_COLOR
+        panel.Controls.Add(heading, 0, 0)
+        body = Label()
+        body.Text = text
+        body.AutoSize = True
+        body.MaximumSize = Size(max(560, self._detail_width() - 32), 0)
+        body.Font = self.card_body_font
+        body.ForeColor = NAVY_COLOR
+        body.Padding = Padding(0, 4, 0, 0)
+        body.UseCompatibleTextRendering = True
+        panel.Controls.Add(body, 0, 1)
+        panel.Tag = body
+        self.detail_labels.append(body)
+        return panel
 
-    def _resize_content_cards(self, sender, args):
-        width = self._card_width()
-        for card in self.cards:
+    def _resize_cards(self, sender, event_args):
+        width = self._detail_width()
+        for card in self.detail_cards:
             card.Width = width
-        text_width = max(700, width - 96)
-        for line_label in self.text_labels:
-            line_label.Width = text_width
+        for label in self.detail_labels:
+            label.MaximumSize = Size(max(560, width - 32), 0)
 
-    def _close(self, sender, args):
+    def _dispose_detail_controls(self):
+        try:
+            controls = [control for control in self.detail_panel.Controls]
+            for control in controls:
+                self.detail_panel.Controls.Remove(control)
+                control.Dispose()
+        except Exception:
+            try:
+                self.detail_panel.Controls.Clear()
+            except Exception:
+                pass
+
+    def cleanup(self):
+        if getattr(self, "_cleanup_done", False):
+            return
+        self._cleanup_done = True
+        try:
+            self.detail_panel.SizeChanged -= self._resize_cards
+        except Exception:
+            pass
+        self._dispose_detail_controls()
+        for font in (
+            self.nav_font_regular,
+            self.nav_font_bold,
+            self.detail_title_font,
+            self.card_heading_font,
+            self.card_body_font
+        ):
+            try:
+                font.Dispose()
+            except Exception:
+                pass
+
+    def _close(self, sender, event_args):
         self.Close()
 
 
+help_form = None
+help_profile = create_ui_close_profile(u"Help")
 try:
-    HelpForm().ShowDialog()
+    help_form = HelpForm()
+    help_profile.attach(help_form)
+    help_profile.show_dialog()
 except Exception as error:
-    forms.alert(
-        u"Help 창을 표시하는 중 오류가 발생했습니다:\n{0}".format(
-            safe_text(error)
-        ),
-        title="Revit QC Toolkit 도움말",
-        warn_icon=True
-    )
+    try:
+        log_folder = os.path.join(EXTENSION_DIR, "reports")
+        if not os.path.isdir(log_folder):
+            os.makedirs(log_folder)
+        log_path = os.path.join(log_folder, "help_ui_error.log")
+        with io.open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(
+                u"[{0}] {1}\n".format(
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    safe_text(error)
+                )
+            )
+    except Exception:
+        pass
+finally:
+    if help_form is not None:
+        help_profile.dispose()

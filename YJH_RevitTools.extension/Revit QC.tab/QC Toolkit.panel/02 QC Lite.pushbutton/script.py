@@ -39,6 +39,7 @@ from grouping import (
 )
 from report_history import select_latest_report_path, write_latest_report_path
 from report_ui import html_escape, render_quick_report
+from qc_workflow_ui import show_qc_lite_dashboard
 
 
 config = load_config(CONFIG_PATH)
@@ -55,6 +56,11 @@ ACTIVE_CONFIG_DISPLAY = u"{0} ({1})".format(
     ACTIVE_CONFIG_FILE
 )
 doc = revit.doc
+selected_export_options = request_export_options(REPORTS_DIR, quick_mode=True)
+
+if selected_export_options is None:
+    script.exit()
+
 output = script.get_output()
 output.set_title("Revit QC Lite {0}".format(VERSION))
 if CONFIG_META.get("warning", u""):
@@ -64,14 +70,6 @@ if CONFIG_META.get("warning", u""):
             html_escape(CONFIG_META["warning"])
         )
     )
-
-selected_export_options = request_export_options(REPORTS_DIR, quick_mode=True)
-
-if selected_export_options is None:
-    output.print_html(
-        u"<h2>Revit QC Lite</h2><p>Export cancelled by user</p>"
-    )
-    script.exit()
 
 run_time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
 view_config = config["view_qc"]
@@ -185,6 +183,7 @@ render_quick_report(
     summary_data,
     qc_status,
     len(issue_group_rows),
+    key_issue_rows,
     saved_full_csv_path,
     full_csv_error,
     saved_summary_csv_path,
@@ -200,3 +199,10 @@ if history_error:
             html_escape(history_error)
         )
     )
+
+show_qc_lite_dashboard(
+    to_text(doc.Title),
+    summary_data,
+    key_issue_rows,
+    latest_report_path
+)

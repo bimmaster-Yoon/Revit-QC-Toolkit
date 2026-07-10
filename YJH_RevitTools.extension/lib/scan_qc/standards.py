@@ -170,6 +170,7 @@ def _create_source_result(settings, template_names, base_view_names):
         "standards_rvt_path": standards_path,
         "standards_rvt_exists": standards_rvt_exists(settings),
         "standards_document_inspected": False,
+        "inspection_skipped_reason": u"",
         "standards_opened_by_script": False,
         "standards_open_error": u"",
         "standards_close_error": u"",
@@ -420,6 +421,12 @@ def install_missing_standards(target_doc, settings):
         "installation": installation,
         "after": before_result
     }
+
+    if not installation["required"]:
+        source_result["inspection_skipped_reason"] = (
+            u"All required standards already exist in the current project."
+        )
+        return result
 
     standards_doc = None
     opened_by_script = False

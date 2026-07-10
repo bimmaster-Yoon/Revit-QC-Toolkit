@@ -7,8 +7,15 @@ except Exception:
     ElementId = None
     StorageType = None
 
+try:
+    from scan_qc.target_parameter import (
+        SCAN_QC_TARGET_PARAMETER_NAME,
+        get_target_parameter
+    )
+except Exception:
+    SCAN_QC_TARGET_PARAMETER_NAME = u"SCAN_QC_TARGET"
+    get_target_parameter = None
 
-SCAN_QC_TARGET_PARAMETER_NAME = u"SCAN_QC_TARGET"
 
 
 def _to_text(value):
@@ -267,10 +274,17 @@ def _is_existing_or_demolished_wall(wall, doc):
 
 
 def _has_scan_qc_target_yes(wall):
-    try:
-        parameter = wall.LookupParameter(SCAN_QC_TARGET_PARAMETER_NAME)
-    except Exception:
-        parameter = None
+    parameter = None
+    if get_target_parameter is not None:
+        try:
+            parameter = get_target_parameter(wall)
+        except Exception:
+            parameter = None
+    if parameter is None:
+        try:
+            parameter = wall.LookupParameter(SCAN_QC_TARGET_PARAMETER_NAME)
+        except Exception:
+            parameter = None
     return _parameter_is_yes(parameter)
 
 

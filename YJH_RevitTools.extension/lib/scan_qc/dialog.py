@@ -8,9 +8,11 @@ clr.AddReference("System.Drawing")
 clr.AddReference("System.Windows.Forms")
 
 from System import DateTime
-from System.Drawing import Color, ContentAlignment, Font, FontFamily, FontStyle, Size
+from System.Diagnostics import Stopwatch
+from System.Drawing import Color, ContentAlignment, FontStyle, Size, SizeF
 from System.Windows.Forms import (
     AutoScaleMode,
+    AutoSizeMode,
     BorderStyle,
     Button,
     CheckBox,
@@ -29,8 +31,10 @@ from System.Windows.Forms import (
     HorizontalAlignment,
     Label,
     Padding,
+    Panel,
     RowStyle,
     SaveFileDialog,
+    Screen,
     SizeType,
     TableLayoutPanel,
     TextBox,
@@ -57,34 +61,54 @@ from scan_qc.source_views import (
     get_source_plan_view_label,
     get_source_plan_view_name
 )
+from scan_qc.startup_cache import get_runtime_diagnostics
+from ui_close_profiler import create_ui_close_profile, log_layout_snapshot
+from qc_ui_style import (
+    BORDER_COLOR,
+    BUTTON_HOVER_COLOR,
+    BUTTON_NAVY_COLOR,
+    HELP_BACKGROUND_COLOR,
+    MUTED_COLOR,
+    NAVY_COLOR,
+    OUTER_MARGIN,
+    HEADER_TOP_PADDING,
+    HEADER_BOTTOM_MARGIN,
+    SECTION_GAP,
+    GROUP_INNER_PADDING,
+    SMALL_ACTION_BUTTON_WIDTH,
+    SMALL_ACTION_BUTTON_HEIGHT,
+    FOOTER_BUTTON_WIDTH,
+    FOOTER_BUTTON_HEIGHT,
+    FOOTER_HEIGHT,
+    WARNING_BACKGROUND_COLOR,
+    configure_content_scroll,
+    configure_tooltip,
+    dispose_tooltip,
+    get_preferred_font
+)
 
 
-NAVY_COLOR = Color.FromArgb(38, 54, 69)
-BUTTON_NAVY_COLOR = Color.FromArgb(83, 103, 119)
-BUTTON_HOVER_COLOR = Color.FromArgb(70, 88, 103)
-MUTED_COLOR = Color.FromArgb(95, 111, 125)
-BORDER_COLOR = Color.FromArgb(214, 221, 227)
-HELP_BACKGROUND_COLOR = Color.FromArgb(248, 249, 250)
-WARNING_BACKGROUND_COLOR = Color.FromArgb(255, 241, 230)
 REPORT_SHEET_MODE_CREATE_NEW = u"create_new"
 REPORT_SHEET_MODE_EXISTING = u"existing"
 REPORT_SHEET_MODE_CREATE_NEW_LABEL = u"Create New Scan QC Report Sheet"
 REPORT_SHEET_MODE_EXISTING_LABEL = u"Use Existing Sheet"
 
-
-def get_preferred_font(size, style=FontStyle.Regular):
-    preferred_names = [u"Segoe UI", u"Malgun Gothic", u"Pretendard", u"SUIT"]
-
-    try:
-        available_names = [family.Name.lower() for family in FontFamily.Families]
-        for font_name in preferred_names:
-            if font_name.lower() in available_names:
-                return Font(font_name, size, style)
-    except Exception:
-        pass
-
-    return Font(u"Segoe UI", size, style)
-
+WINDOW_OUTER_PADDING = Padding(
+    OUTER_MARGIN,
+    HEADER_TOP_PADDING,
+    OUTER_MARGIN,
+    OUTER_MARGIN
+)
+GROUP_CONTENT_PADDING = Padding(
+    GROUP_INNER_PADDING,
+    8,
+    GROUP_INNER_PADDING,
+    8
+)
+GROUP_VERTICAL_MARGIN = Padding(0, 0, 0, SECTION_GAP)
+CONTROL_HEIGHT = 32
+FOOTER_BUTTON_GAP = 12
+SCAN_FOOTER_HEIGHT = FOOTER_HEIGHT
 
 def format_mm_value(value):
     try:
@@ -137,14 +161,28 @@ class ScanQcForm(Form):
         source_plan_views,
         existing_report_sheets,
         default_source_plan_view_id,
-        settings
+        settings,
+        target_parameter_status=None,
+        target_counts_by_view_id=None,
+        initial_state=None,
+        target_action_handler=None,
+        existing_report_sheet_loader=None
     ):
         Form.__init__(self)
+        self.SuspendLayout()
+        self._is_initializing = True
         self.result = None
         self.point_clouds = point_clouds
         self.source_plan_views = source_plan_views
         self.existing_report_sheets = existing_report_sheets or []
         self.settings = settings
+        self.target_parameter_status = target_parameter_status or {}
+        self.target_counts_by_view_id = target_counts_by_view_id or {}
+        self.initial_state = initial_state or {}
+        self.target_action_handler = target_action_handler
+        self.existing_report_sheet_loader = existing_report_sheet_loader
+        self.existing_report_sheets_loaded = bool(existing_report_sheets)
+        self.combo_population_ms = 0
         self.pdf_auto_enabled_plan_view = False
         tolerance_mm = get_tolerance_mm(settings)
         deviation_options = get_deviation_options(settings)
@@ -156,8 +194,16 @@ class ScanQcForm(Form):
         self.default_paper_size = report_defaults.get("paper_size", u"A3 Landscape")
 
         self.Text = "Revit QC - Scan QC"
-        self.ClientSize = Size(1220, 1440)
-        self.MinimumSize = Size(1100, 1180)
+        working_area = Screen.PrimaryScreen.WorkingArea
+        maximum_client_width = int(working_area.Width * 0.94)
+        maximum_client_height = int(working_area.Height * 0.93)
+        client_width = max(900, min(1180, maximum_client_width))
+        client_height = max(760, min(1120, maximum_client_height))
+        self.ClientSize = Size(client_width, client_height)
+        self.MinimumSize = Size(
+            min(1040, client_width),
+            min(900, client_height)
+        )
         self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = True
@@ -166,45 +212,61 @@ class ScanQcForm(Form):
         self.BackColor = Color.White
         self.ForeColor = NAVY_COLOR
         self.Font = get_preferred_font(9.5)
-        self.AutoScaleMode = AutoScaleMode.Font
-        self.AutoScroll = True
-        self.tool_tip = ToolTip()
-        self.tool_tip.AutoPopDelay = 12000
-        self.tool_tip.InitialDelay = 450
-        self.tool_tip.ReshowDelay = 120
-        self.tool_tip.ShowAlways = True
+        self.AutoScaleMode = AutoScaleMode.Dpi
+        self.AutoScaleDimensions = SizeF(96.0, 96.0)
+        self.AutoScroll = False
+        self.tool_tip = configure_tooltip(ToolTip())
+
+        root_layout = TableLayoutPanel()
+        root_layout.Dock = DockStyle.Fill
+        root_layout.Padding = WINDOW_OUTER_PADDING
+        root_layout.ColumnCount = 1
+        root_layout.RowCount = 3
+        root_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        root_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        root_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        root_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        self.Controls.Add(root_layout)
 
         main_layout = TableLayoutPanel()
-        main_layout.Dock = DockStyle.Fill
-        main_layout.Padding = Padding(34, 24, 34, 30)
+        main_layout.Dock = DockStyle.Top
+        main_layout.AutoSize = True
+        main_layout.Padding = Padding(0)
         main_layout.ColumnCount = 1
-        main_layout.RowCount = 11
+        main_layout.RowCount = 7
         main_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 50.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 110.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 150.0))
-        self.selected_walls_row_style = RowStyle(SizeType.Absolute, 0.0)
-        main_layout.RowStyles.Add(self.selected_walls_row_style)
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 190.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 180.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 164.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 340.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 102.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 64.0))
-        self.Controls.Add(main_layout)
+        for _row_index in range(7):
+            main_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+
+        content_panel = Panel()
+        content_panel.Dock = DockStyle.Fill
+        content_panel.AutoScroll = False
+        content_panel.Margin = Padding(0, HEADER_BOTTOM_MARGIN, 0, 0)
+        content_panel.Controls.Add(main_layout)
+        root_layout.Controls.Add(content_panel, 0, 1)
+        self.content_panel = content_panel
+        self.main_layout = main_layout
+        self.Shown += self._configure_scroll_fallback
+
+        header_panel = Panel()
+        header_panel.Dock = DockStyle.Fill
+        header_panel.AutoSize = True
+        header_panel.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        root_layout.Controls.Add(header_panel, 0, 0)
 
         intro_label = Label()
         intro_label.Text = "Scan QC Setup"
-        intro_label.Dock = DockStyle.Fill
+        intro_label.Dock = DockStyle.Top
         intro_label.AutoSize = False
         intro_label.ForeColor = NAVY_COLOR
-        intro_label.Font = get_preferred_font(15.0, FontStyle.Bold)
+        intro_label.Font = get_preferred_font(16.0, FontStyle.Bold)
         intro_label.Padding = Padding(0, 5, 0, 0)
-        main_layout.Controls.Add(intro_label, 0, 0)
+        intro_label.AutoSize = True
+        intro_label.MinimumSize = Size(0, 46)
+        header_panel.Controls.Add(intro_label)
 
         analysis_scope_group = self._create_group("Analysis Scope")
-        main_layout.Controls.Add(analysis_scope_group, 0, 1)
+        main_layout.Controls.Add(analysis_scope_group, 0, 0)
         self._set_tooltip(
             analysis_scope_group,
             u"검토 범위를 선택합니다. Active Plan Level은 선택한 평면도 기준 "
@@ -214,23 +276,31 @@ class ScanQcForm(Form):
 
         analysis_scope_layout = TableLayoutPanel()
         analysis_scope_layout.Dock = DockStyle.Fill
-        analysis_scope_layout.Padding = Padding(12, 10, 12, 10)
+        analysis_scope_layout.AutoSize = True
+        analysis_scope_layout.Padding = GROUP_CONTENT_PADDING
         analysis_scope_layout.ColumnCount = 1
-        analysis_scope_layout.RowCount = 1
+        analysis_scope_layout.RowCount = 2
         analysis_scope_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        analysis_scope_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        analysis_scope_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        self.selected_walls_row_style = RowStyle(SizeType.Absolute, 0.0)
+        analysis_scope_layout.RowStyles.Add(self.selected_walls_row_style)
         analysis_scope_group.Controls.Add(analysis_scope_layout)
 
         self.analysis_scope_combo = ComboBox()
         self.analysis_scope_combo.Dock = DockStyle.Fill
         self.analysis_scope_combo.DropDownStyle = ComboBoxStyle.DropDownList
+        self.analysis_scope_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
         self.analysis_scope_combo.Margin = Padding(0, 2, 0, 2)
-        self.analysis_scope_combo.Items.Add(
-            ANALYSIS_SCOPE_LABELS[ANALYSIS_SCOPE_ACTIVE_PLAN_LEVEL]
-        )
-        self.analysis_scope_combo.Items.Add(
-            ANALYSIS_SCOPE_LABELS[ANALYSIS_SCOPE_SELECTED_WALLS]
-        )
+        self.analysis_scope_combo.BeginUpdate()
+        try:
+            self.analysis_scope_combo.Items.Add(
+                ANALYSIS_SCOPE_LABELS[ANALYSIS_SCOPE_ACTIVE_PLAN_LEVEL]
+            )
+            self.analysis_scope_combo.Items.Add(
+                ANALYSIS_SCOPE_LABELS[ANALYSIS_SCOPE_SELECTED_WALLS]
+            )
+        finally:
+            self.analysis_scope_combo.EndUpdate()
         self.analysis_scope_combo.SelectedIndex = 0
         analysis_scope_layout.Controls.Add(self.analysis_scope_combo, 0, 0)
         self._set_tooltip(
@@ -240,9 +310,12 @@ class ScanQcForm(Form):
             u"선택한 벽만 사용합니다."
         )
 
-        self.selected_walls_group = self._create_group("Selected Walls")
+        self.selected_walls_group = Panel()
+        self.selected_walls_group.Dock = DockStyle.Fill
+        self.selected_walls_group.AutoSize = True
         self.selected_walls_group.Visible = False
-        main_layout.Controls.Add(self.selected_walls_group, 0, 3)
+        self.selected_walls_group.Margin = Padding(0, 4, 0, 0)
+        analysis_scope_layout.Controls.Add(self.selected_walls_group, 0, 1)
         self._set_tooltip(
             self.selected_walls_group,
             u"Selected Walls 모드에서 검토할 Revit Wall 요소를 지정합니다. "
@@ -252,12 +325,13 @@ class ScanQcForm(Form):
 
         selected_walls_layout = TableLayoutPanel()
         selected_walls_layout.Dock = DockStyle.Fill
-        selected_walls_layout.Padding = Padding(12, 6, 12, 8)
-        selected_walls_layout.ColumnCount = 1
-        selected_walls_layout.RowCount = 2
-        selected_walls_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        selected_walls_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 24.0))
-        selected_walls_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 32.0))
+        selected_walls_layout.AutoSize = True
+        selected_walls_layout.Padding = Padding(0, 4, 0, 2)
+        selected_walls_layout.ColumnCount = 2
+        selected_walls_layout.RowCount = 1
+        selected_walls_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 40.0))
+        selected_walls_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 60.0))
+        selected_walls_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         self.selected_walls_group.Controls.Add(selected_walls_layout)
 
         selected_wall_count_label = Label()
@@ -265,7 +339,8 @@ class ScanQcForm(Form):
             selected_wall_count
         )
         selected_wall_count_label.Dock = DockStyle.Fill
-        selected_wall_count_label.AutoSize = False
+        selected_wall_count_label.AutoSize = True
+        selected_wall_count_label.MinimumSize = Size(0, 28)
         selected_wall_count_label.ForeColor = NAVY_COLOR
         selected_wall_count_label.Font = get_preferred_font(9.5, FontStyle.Bold)
         selected_walls_layout.Controls.Add(selected_wall_count_label, 0, 0)
@@ -276,16 +351,17 @@ class ScanQcForm(Form):
         else:
             selected_wall_instruction.Text = "Click Run to pick Walls in Revit."
         selected_wall_instruction.Dock = DockStyle.Fill
-        selected_wall_instruction.AutoSize = False
+        selected_wall_instruction.AutoSize = True
+        selected_wall_instruction.MinimumSize = Size(0, 32)
         selected_wall_instruction.ForeColor = MUTED_COLOR
         selected_wall_instruction.TextAlign = ContentAlignment.MiddleLeft
-        selected_walls_layout.Controls.Add(selected_wall_instruction, 0, 1)
+        selected_walls_layout.Controls.Add(selected_wall_instruction, 1, 0)
 
         self.analysis_scope_combo.SelectedIndexChanged += self._update_analysis_scope_ui
         self._update_analysis_scope_ui(None, None)
 
         source_plan_group = self._create_group("Source Plan View")
-        main_layout.Controls.Add(source_plan_group, 0, 2)
+        main_layout.Controls.Add(source_plan_group, 0, 1)
         self._set_tooltip(
             source_plan_group,
             u"QC Plan View와 Active Plan Level 범위의 기준이 되는 평면도입니다. "
@@ -294,18 +370,20 @@ class ScanQcForm(Form):
 
         source_plan_layout = TableLayoutPanel()
         source_plan_layout.Dock = DockStyle.Fill
-        source_plan_layout.Padding = Padding(12, 10, 12, 10)
+        source_plan_layout.AutoSize = True
+        source_plan_layout.Padding = GROUP_CONTENT_PADDING
         source_plan_layout.ColumnCount = 1
         source_plan_layout.RowCount = 2
         source_plan_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        source_plan_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 40.0))
-        source_plan_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        source_plan_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        source_plan_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         source_plan_group.Controls.Add(source_plan_layout)
 
         self.source_plan_combo = ComboBox()
         self.source_plan_combo.Dock = DockStyle.Fill
         self.source_plan_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.source_plan_combo.DropDownWidth = 1100
+        self.source_plan_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.source_plan_combo.DropDownWidth = 1400
         self.source_plan_combo.Margin = Padding(0, 2, 0, 8)
         self.source_plan_combo.SelectedIndexChanged += self._update_source_plan_view
         source_plan_layout.Controls.Add(self.source_plan_combo, 0, 0)
@@ -318,23 +396,35 @@ class ScanQcForm(Form):
         self.selected_source_plan_label = Label()
         self.selected_source_plan_label.Dock = DockStyle.Fill
         self.selected_source_plan_label.AutoSize = False
+        self.selected_source_plan_label.MinimumSize = Size(0, 22)
         self.selected_source_plan_label.ForeColor = MUTED_COLOR
         self.selected_source_plan_label.AutoEllipsis = True
         source_plan_layout.Controls.Add(self.selected_source_plan_label, 0, 1)
 
         selected_source_plan_index = 0
-        for index, source_plan_view in enumerate(source_plan_views):
-            self.source_plan_combo.Items.Add(
-                get_source_plan_view_label(source_plan_view)
-            )
-            if get_element_id_value(source_plan_view.Id) == default_source_plan_view_id:
-                selected_source_plan_index = index
+        combo_watch = Stopwatch.StartNew()
+        self.source_plan_combo.BeginUpdate()
+        try:
+            for index, source_plan_view in enumerate(source_plan_views):
+                self.source_plan_combo.Items.Add(
+                    get_source_plan_view_label(source_plan_view)
+                )
+                if (
+                    get_element_id_value(source_plan_view.Id)
+                    == default_source_plan_view_id
+                ):
+                    selected_source_plan_index = index
+        finally:
+            self.source_plan_combo.EndUpdate()
+            combo_watch.Stop()
+            self.combo_population_ms += combo_watch.ElapsedMilliseconds
 
         if source_plan_views:
             self.source_plan_combo.SelectedIndex = selected_source_plan_index
 
         target_filter_group = self._create_group("Target Wall Filter")
-        main_layout.Controls.Add(target_filter_group, 0, 4)
+        target_filter_group.AutoSize = True
+        main_layout.Controls.Add(target_filter_group, 0, 2)
         self._set_tooltip(
             target_filter_group,
             u"검토 대상 벽을 제한합니다. Interior/Exterior 기준은 도면상 "
@@ -344,14 +434,21 @@ class ScanQcForm(Form):
 
         target_filter_layout = TableLayoutPanel()
         target_filter_layout.Dock = DockStyle.Fill
-        target_filter_layout.Padding = Padding(12, 10, 12, 16)
+        target_filter_layout.AutoSize = True
+        target_filter_layout.Padding = GROUP_CONTENT_PADDING
         target_filter_layout.ColumnCount = 2
-        target_filter_layout.RowCount = 3
-        target_filter_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
-        target_filter_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
-        target_filter_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 42.0))
-        target_filter_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 42.0))
-        target_filter_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        target_filter_layout.RowCount = 5
+        target_filter_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 50.0)
+        )
+        target_filter_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 50.0)
+        )
+        target_filter_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        target_filter_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        target_filter_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        target_filter_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        target_filter_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         target_filter_group.Controls.Add(target_filter_layout)
 
         self.interior_walls_only_check = self._create_check_box(
@@ -399,28 +496,99 @@ class ScanQcForm(Form):
             u"다른 필터와 함께 선택하면 AND 조건으로 적용됩니다."
         )
 
-        target_filter_help_label = Label()
-        target_filter_help_label.Text = (
-            "Target filters are optional. When multiple filters are checked, "
-            "they are applied together as AND conditions. "
-            "여러 필터를 동시에 선택하면 모든 조건을 만족하는 벽만 검토합니다."
+        self.target_status_label = Label()
+        self.target_status_label.Dock = DockStyle.Fill
+        self.target_status_label.AutoSize = True
+        self.target_status_label.MinimumSize = Size(0, 24)
+        self.target_status_label.ForeColor = NAVY_COLOR
+        self.target_status_label.Font = get_preferred_font(9.5, FontStyle.Bold)
+        self.target_status_label.Padding = Padding(0, 6, 0, 2)
+        target_filter_layout.Controls.Add(self.target_status_label, 0, 2)
+        target_filter_layout.SetColumnSpan(self.target_status_label, 2)
+
+        target_action_panel = FlowLayoutPanel()
+        target_action_panel.Dock = DockStyle.Fill
+        target_action_panel.AutoSize = True
+        target_action_panel.FlowDirection = FlowDirection.LeftToRight
+        target_action_panel.WrapContents = False
+        target_action_panel.Padding = Padding(0, 6, 0, 4)
+        target_filter_layout.Controls.Add(target_action_panel, 0, 3)
+        target_filter_layout.SetColumnSpan(target_action_panel, 2)
+
+        parameter_available = self.target_parameter_status.get(
+            "available",
+            False
         )
-        target_filter_help_label.Dock = DockStyle.Fill
-        target_filter_help_label.AutoSize = False
-        target_filter_help_label.ForeColor = MUTED_COLOR
-        target_filter_help_label.TextAlign = ContentAlignment.MiddleLeft
-        target_filter_help_label.Padding = Padding(6, 8, 6, 4)
-        target_filter_layout.Controls.Add(target_filter_help_label, 0, 2)
-        target_filter_layout.SetColumnSpan(target_filter_help_label, 2)
+        mark_selected_button = self._create_target_action_button(
+            "Pick & Mark",
+            self._request_mark_selected
+        )
+        clear_selected_button = self._create_target_action_button(
+            "Pick & Clear",
+            self._request_clear_selected
+        )
+        select_targets_button = self._create_target_action_button(
+            "Show Targets",
+            self._request_select_targets
+        )
+        select_targets_button.Margin = Padding(0)
+        for action_button in [
+            mark_selected_button,
+            clear_selected_button,
+            select_targets_button
+        ]:
+            action_button.Enabled = parameter_available
+            target_action_panel.Controls.Add(action_button)
+            if not parameter_available:
+                self._set_tooltip(
+                    action_button,
+                    u"SCAN_QC_TARGET Shared Parameter가 설치된 후 사용할 수 있습니다."
+                )
+        if parameter_available:
+            self._set_tooltip(
+                mark_selected_button,
+                u"Revit 화면에서 벽을 선택하고 SCAN_QC_TARGET을 Yes로 설정합니다."
+            )
+            self._set_tooltip(
+                clear_selected_button,
+                u"선택한 벽의 SCAN_QC_TARGET 값을 해제합니다."
+            )
+            self._set_tooltip(
+                select_targets_button,
+                u"현재 Source Plan View의 Scan QC 대상 벽을 선택 상태로 표시합니다."
+            )
+        self._update_target_status_label()
+
+        self.target_filter_help_label = Label()
+        self.target_filter_help_label.Text = (
+            "Target filters are optional and combined with AND conditions."
+        )
+        last_action_message = self.target_parameter_status.get(
+            "last_action_message",
+            u""
+        )
+        if last_action_message:
+            self.target_filter_help_label.Text += u"  {0}".format(
+                last_action_message
+            )
+        self.target_filter_help_label.Dock = DockStyle.Top
+        self.target_filter_help_label.AutoSize = True
+        self.target_filter_help_label.MaximumSize = Size(980, 0)
+        self.target_filter_help_label.ForeColor = MUTED_COLOR
+        self.target_filter_help_label.TextAlign = ContentAlignment.MiddleLeft
+        self.target_filter_help_label.Padding = Padding(0, 4, 0, 4)
+        self.target_filter_help_label.UseCompatibleTextRendering = True
+        target_filter_layout.Controls.Add(self.target_filter_help_label, 0, 4)
+        target_filter_layout.SetColumnSpan(self.target_filter_help_label, 2)
         self._set_tooltip(
-            target_filter_help_label,
+            self.target_filter_help_label,
             u"Target Wall Filter는 선택 사항입니다. 여러 필터를 동시에 "
             u"선택하면 AND 조건으로 적용되어 모든 조건을 만족하는 벽만 "
             u"검토합니다."
         )
 
         point_cloud_group = self._create_group("Analysis Point Cloud Source")
-        main_layout.Controls.Add(point_cloud_group, 0, 5)
+        main_layout.Controls.Add(point_cloud_group, 0, 3)
         self._set_tooltip(
             point_cloud_group,
             u"오차 계산에 사용할 Point Cloud Instance입니다. 선택한 Point "
@@ -429,19 +597,21 @@ class ScanQcForm(Form):
 
         point_cloud_layout = TableLayoutPanel()
         point_cloud_layout.Dock = DockStyle.Fill
-        point_cloud_layout.Padding = Padding(12, 10, 12, 10)
+        point_cloud_layout.AutoSize = True
+        point_cloud_layout.Padding = GROUP_CONTENT_PADDING
         point_cloud_layout.ColumnCount = 1
         point_cloud_layout.RowCount = 3
         point_cloud_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        point_cloud_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 40.0))
-        point_cloud_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
-        point_cloud_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        point_cloud_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        point_cloud_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        point_cloud_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         point_cloud_group.Controls.Add(point_cloud_layout)
 
         self.point_cloud_combo = ComboBox()
         self.point_cloud_combo.Dock = DockStyle.Fill
         self.point_cloud_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.point_cloud_combo.DropDownWidth = 1100
+        self.point_cloud_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.point_cloud_combo.DropDownWidth = 1400
         self.point_cloud_combo.Margin = Padding(0, 2, 0, 8)
         self.point_cloud_combo.SelectedIndexChanged += self._update_selected_point_cloud
         point_cloud_layout.Controls.Add(self.point_cloud_combo, 0, 0)
@@ -454,6 +624,7 @@ class ScanQcForm(Form):
         self.selected_point_cloud_label = Label()
         self.selected_point_cloud_label.Dock = DockStyle.Fill
         self.selected_point_cloud_label.AutoSize = False
+        self.selected_point_cloud_label.MinimumSize = Size(0, 22)
         self.selected_point_cloud_label.ForeColor = MUTED_COLOR
         self.selected_point_cloud_label.AutoEllipsis = True
         point_cloud_layout.Controls.Add(self.selected_point_cloud_label, 0, 1)
@@ -463,21 +634,28 @@ class ScanQcForm(Form):
             "Selected point cloud is used for wall deviation sampling."
         )
         point_cloud_help_label.Dock = DockStyle.Fill
-        point_cloud_help_label.AutoSize = False
+        point_cloud_help_label.AutoSize = True
         point_cloud_help_label.ForeColor = MUTED_COLOR
         point_cloud_help_label.TextAlign = ContentAlignment.MiddleLeft
-        point_cloud_layout.Controls.Add(point_cloud_help_label, 0, 2)
+        point_cloud_help_label.Visible = False
 
-        for point_cloud in point_clouds:
-            self.point_cloud_combo.Items.Add(
-                u"{0}  [ElementId: {1}]".format(
-                    get_point_cloud_name(point_cloud),
-                    get_element_id_value(point_cloud.Id)
+        combo_watch = Stopwatch.StartNew()
+        self.point_cloud_combo.BeginUpdate()
+        try:
+            for point_cloud in point_clouds:
+                self.point_cloud_combo.Items.Add(
+                    u"{0}  [ElementId: {1}]".format(
+                        get_point_cloud_name(point_cloud),
+                        get_element_id_value(point_cloud.Id)
+                    )
                 )
-            )
+        finally:
+            self.point_cloud_combo.EndUpdate()
+            combo_watch.Stop()
+            self.combo_population_ms += combo_watch.ElapsedMilliseconds
 
         tolerance_group = self._create_group("Default Tolerances")
-        main_layout.Controls.Add(tolerance_group, 0, 6)
+        main_layout.Controls.Add(tolerance_group, 0, 4)
         self._set_tooltip(
             tolerance_group,
             u"Review / Critical 판정 기준입니다. 값은 mm 단위이며, 입력값은 "
@@ -486,13 +664,16 @@ class ScanQcForm(Form):
 
         tolerance_layout = TableLayoutPanel()
         tolerance_layout.Dock = DockStyle.Fill
-        tolerance_layout.Padding = Padding(12, 10, 12, 10)
+        tolerance_layout.AutoSize = True
+        tolerance_layout.Padding = GROUP_CONTENT_PADDING
         tolerance_layout.ColumnCount = 3
         tolerance_layout.RowCount = 2
         for index in range(3):
-            tolerance_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 33.33))
-        tolerance_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 46.0))
-        tolerance_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+            tolerance_layout.ColumnStyles.Add(
+                ColumnStyle(SizeType.Percent, 100.0 / 3.0)
+            )
+        tolerance_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        tolerance_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         tolerance_group.Controls.Add(tolerance_layout)
 
         tolerance_layout.Controls.Add(
@@ -529,17 +710,18 @@ class ScanQcForm(Form):
         critical_label.Text = "Review Max +"
         critical_label.Dock = DockStyle.Fill
         critical_label.AutoSize = False
+        critical_label.MinimumSize = Size(0, CONTROL_HEIGHT)
         critical_label.TextAlign = ContentAlignment.MiddleCenter
         critical_label.BackColor = Color.FromArgb(252, 235, 235)
         critical_label.ForeColor = NAVY_COLOR
         critical_label.Font = get_preferred_font(10.0, FontStyle.Bold)
-        critical_label.Margin = Padding(6, 4, 6, 4)
+        critical_label.Margin = Padding(4)
         tolerance_layout.Controls.Add(self.ok_max_text, 0, 1)
         tolerance_layout.Controls.Add(self.review_max_text, 1, 1)
         tolerance_layout.Controls.Add(critical_label, 2, 1)
 
         output_group = self._create_group("Output Options")
-        main_layout.Controls.Add(output_group, 0, 7)
+        main_layout.Controls.Add(output_group, 0, 5)
         self._set_tooltip(
             output_group,
             u"Scan QC 실행 후 생성할 결과물을 선택합니다. PDF Report를 선택하면 "
@@ -548,18 +730,30 @@ class ScanQcForm(Form):
 
         output_layout = TableLayoutPanel()
         output_layout.Dock = DockStyle.Fill
-        output_layout.Padding = Padding(12, 10, 12, 8)
-        output_layout.ColumnCount = 2
-        output_layout.RowCount = 6
-        output_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
-        output_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
-        output_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 38.0))
-        output_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 38.0))
-        output_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 38.0))
-        output_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 52.0))
-        output_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 60.0))
-        output_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 52.0))
+        output_layout.AutoSize = True
+        output_layout.Padding = GROUP_CONTENT_PADDING
+        output_layout.ColumnCount = 1
+        output_layout.RowCount = 2
+        output_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        for _index in range(2):
+            output_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         output_group.Controls.Add(output_layout)
+
+        output_check_layout = TableLayoutPanel()
+        output_check_layout.Dock = DockStyle.Top
+        output_check_layout.AutoSize = True
+        output_check_layout.Margin = Padding(0)
+        output_check_layout.ColumnCount = 2
+        output_check_layout.RowCount = 3
+        output_check_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 50.0)
+        )
+        output_check_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 50.0)
+        )
+        for _index in range(3):
+            output_check_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        output_layout.Controls.Add(output_check_layout, 0, 0)
 
         self.create_plan_check = self._create_check_box(
             "Create QC Plan View",
@@ -583,12 +777,11 @@ class ScanQcForm(Form):
             "Create Preview Callouts When No Deviation Data",
             output_defaults["create_preview_callouts_when_no_deviation_data"]
         )
-        output_layout.Controls.Add(self.create_plan_check, 0, 0)
-        output_layout.Controls.Add(self.create_3d_check, 1, 0)
-        output_layout.Controls.Add(self.create_pdf_check, 0, 1)
-        output_layout.Controls.Add(self.export_csv_check, 1, 1)
-        output_layout.Controls.Add(self.preview_callouts_check, 0, 2)
-        output_layout.SetColumnSpan(self.preview_callouts_check, 2)
+        output_check_layout.Controls.Add(self.create_plan_check, 0, 0)
+        output_check_layout.Controls.Add(self.create_3d_check, 1, 0)
+        output_check_layout.Controls.Add(self.create_pdf_check, 0, 1)
+        output_check_layout.Controls.Add(self.export_csv_check, 1, 1)
+        output_check_layout.Controls.Add(self.preview_callouts_check, 0, 2)
         self._set_tooltip(
             self.create_plan_check,
             u"선택한 Source Plan View를 복제해 작업용 평면도를 생성합니다. "
@@ -608,17 +801,55 @@ class ScanQcForm(Form):
             u"생성합니다. 실제 오차 결과처럼 해석하면 안 됩니다."
         )
 
+        report_settings_group = self._create_group("Report Settings")
+        report_settings_group.Margin = Padding(0, SECTION_GAP, 0, 0)
+        output_layout.Controls.Add(report_settings_group, 0, 1)
+
+        report_settings_layout = TableLayoutPanel()
+        report_settings_layout.Dock = DockStyle.Fill
+        report_settings_layout.AutoSize = True
+        report_settings_layout.Padding = GROUP_CONTENT_PADDING
+        report_settings_layout.ColumnCount = 3
+        report_settings_layout.RowCount = 3
+        report_settings_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, 190.0)
+        )
+        report_settings_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 45.0)
+        )
+        report_settings_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Percent, 55.0)
+        )
+        for _index in range(3):
+            report_settings_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        report_settings_group.Controls.Add(report_settings_layout)
+        self.report_settings_layout = report_settings_layout
+
+        report_sheet_mode_label = self._create_report_setting_label(
+            "Report Sheet Mode"
+        )
+        report_settings_layout.Controls.Add(report_sheet_mode_label, 0, 0)
+
         self.report_sheet_mode_combo = ComboBox()
         self.report_sheet_mode_combo.Dock = DockStyle.Fill
         self.report_sheet_mode_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.report_sheet_mode_combo.Margin = Padding(6, 6, 6, 6)
-        self.report_sheet_mode_combo.Items.Add(REPORT_SHEET_MODE_CREATE_NEW_LABEL)
-        self.report_sheet_mode_combo.Items.Add(REPORT_SHEET_MODE_EXISTING_LABEL)
+        self.report_sheet_mode_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.report_sheet_mode_combo.Margin = Padding(0, 4, 0, 4)
+        self.report_sheet_mode_combo.BeginUpdate()
+        try:
+            self.report_sheet_mode_combo.Items.Add(
+                REPORT_SHEET_MODE_CREATE_NEW_LABEL
+            )
+            self.report_sheet_mode_combo.Items.Add(
+                REPORT_SHEET_MODE_EXISTING_LABEL
+            )
+        finally:
+            self.report_sheet_mode_combo.EndUpdate()
         self.report_sheet_mode_combo.SelectedIndex = 0
         self.report_sheet_mode_combo.SelectedIndexChanged += (
             self._update_report_sheet_ui
         )
-        output_layout.Controls.Add(self.report_sheet_mode_combo, 0, 3)
+        report_settings_layout.Controls.Add(self.report_sheet_mode_combo, 1, 0)
         self._set_tooltip(
             self.report_sheet_mode_combo,
             u"PDF Report Sheet 생성 방식을 선택합니다. 기본값은 Scan QC 전용 "
@@ -628,60 +859,53 @@ class ScanQcForm(Form):
         self.existing_report_sheet_combo = ComboBox()
         self.existing_report_sheet_combo.Dock = DockStyle.Fill
         self.existing_report_sheet_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.existing_report_sheet_combo.DropDownWidth = 900
-        self.existing_report_sheet_combo.Margin = Padding(6, 6, 6, 6)
-        for sheet in self.existing_report_sheets:
-            self.existing_report_sheet_combo.Items.Add(get_sheet_label(sheet))
-        if self.existing_report_sheets:
-            self.existing_report_sheet_combo.SelectedIndex = 0
-        else:
-            self.existing_report_sheet_combo.Items.Add("No existing Sheets found")
-            self.existing_report_sheet_combo.SelectedIndex = 0
-        output_layout.Controls.Add(self.existing_report_sheet_combo, 1, 3)
+        self.existing_report_sheet_combo.DropDownWidth = 1400
+        self.existing_report_sheet_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.existing_report_sheet_combo.Margin = Padding(12, 4, 0, 4)
+        self._populate_existing_report_sheet_combo()
+        report_settings_layout.Controls.Add(
+            self.existing_report_sheet_combo,
+            2,
+            0
+        )
 
-        top_n_label = Label()
-        top_n_label.Text = "Top N Callouts"
-        top_n_label.Dock = DockStyle.Fill
-        top_n_label.AutoSize = False
-        top_n_label.TextAlign = ContentAlignment.MiddleLeft
-        top_n_label.ForeColor = NAVY_COLOR
-        top_n_label.Font = get_preferred_font(9.5, FontStyle.Bold)
-        top_n_label.Margin = Padding(6, 8, 6, 6)
-        output_layout.Controls.Add(top_n_label, 0, 4)
+        top_n_label = self._create_report_setting_label("Top N Callouts")
+        report_settings_layout.Controls.Add(top_n_label, 0, 1)
 
         self.top_n_callouts_text = TextBox()
         self.top_n_callouts_text.Text = u"{0}".format(self.default_top_n_callouts)
         self.top_n_callouts_text.Dock = DockStyle.Fill
-        self.top_n_callouts_text.Margin = Padding(6, 8, 6, 10)
+        self.top_n_callouts_text.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.top_n_callouts_text.Margin = Padding(0, 4, 0, 4)
         self.top_n_callouts_text.Font = get_preferred_font(10.0, FontStyle.Bold)
         self.top_n_callouts_text.TextAlign = HorizontalAlignment.Center
-        output_layout.Controls.Add(self.top_n_callouts_text, 1, 4)
+        report_settings_layout.Controls.Add(self.top_n_callouts_text, 1, 1)
+        report_settings_layout.SetColumnSpan(self.top_n_callouts_text, 2)
         self._set_tooltip(
             self.top_n_callouts_text,
             u"검토 결과 중 심각도가 높은 상위 N개 위치만 Revision Cloud ID로 "
             u"표시합니다."
         )
 
-        paper_size_label = Label()
-        paper_size_label.Text = "Paper Size"
-        paper_size_label.Dock = DockStyle.Fill
-        paper_size_label.AutoSize = False
-        paper_size_label.TextAlign = ContentAlignment.MiddleLeft
-        paper_size_label.ForeColor = NAVY_COLOR
-        paper_size_label.Font = get_preferred_font(9.5, FontStyle.Bold)
-        paper_size_label.Margin = Padding(6, 8, 6, 6)
-        output_layout.Controls.Add(paper_size_label, 0, 5)
+        paper_size_label = self._create_report_setting_label("Paper Size")
+        report_settings_layout.Controls.Add(paper_size_label, 0, 2)
 
         self.paper_size_combo = ComboBox()
         self.paper_size_combo.Dock = DockStyle.Fill
         self.paper_size_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.paper_size_combo.Margin = Padding(6, 8, 6, 8)
-        self.paper_size_combo.Items.Add("A3 Landscape")
-        self.paper_size_combo.Items.Add("A2 Landscape")
+        self.paper_size_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
+        self.paper_size_combo.Margin = Padding(0, 4, 0, 4)
+        self.paper_size_combo.BeginUpdate()
+        try:
+            self.paper_size_combo.Items.Add("A3 Landscape")
+            self.paper_size_combo.Items.Add("A2 Landscape")
+        finally:
+            self.paper_size_combo.EndUpdate()
         self.paper_size_combo.SelectedIndex = (
             1 if self.default_paper_size == u"A2 Landscape" else 0
         )
-        output_layout.Controls.Add(self.paper_size_combo, 1, 5)
+        report_settings_layout.Controls.Add(self.paper_size_combo, 1, 2)
+        report_settings_layout.SetColumnSpan(self.paper_size_combo, 2)
         self._set_tooltip(
             self.paper_size_combo,
             u"PDF Report Sheet 크기입니다. A3 Landscape가 기본이며, 선택한 "
@@ -692,47 +916,79 @@ class ScanQcForm(Form):
 
         phase_note = Label()
         phase_note.Text = (
-            "Selected Plan and 3D working views will be created after standards setup. "
-            "Review/Critical Wall results can be marked in the QC Plan View. "
-            "PDF Report requires a QC Plan View and creates it automatically. "
-            "CSV export is planned but disabled in this phase."
+            "Scan QC creates selected working views and reports; original views and "
+            "Point Cloud graphics remain unchanged."
         )
         phase_note.Dock = DockStyle.Fill
-        phase_note.AutoSize = False
+        phase_note.AutoSize = True
+        phase_note.MinimumSize = Size(0, 36)
+        phase_note.UseCompatibleTextRendering = True
         phase_note.ForeColor = MUTED_COLOR
         phase_note.BackColor = HELP_BACKGROUND_COLOR
         phase_note.BorderStyle = BorderStyle.FixedSingle
         phase_note.TextAlign = ContentAlignment.MiddleLeft
-        phase_note.Padding = Padding(12, 8, 12, 8)
-        phase_note.Margin = Padding(0, 10, 0, 10)
+        phase_note.Padding = Padding(12, 6, 12, 6)
+        phase_note.Margin = Padding(0, 7, 0, 7)
         self.phase_note = phase_note
-        main_layout.Controls.Add(phase_note, 0, 9)
+        main_layout.Controls.Add(phase_note, 0, 6)
+        self._set_tooltip(
+            phase_note,
+            u"선택한 옵션에 따라 Scan QC 작업용 View와 Report를 생성합니다. "
+            u"원본 Source Plan View와 Point Cloud 그래픽은 변경하지 않습니다."
+        )
 
-        button_layout = FlowLayoutPanel()
-        button_layout.Dock = DockStyle.Fill
-        button_layout.FlowDirection = FlowDirection.RightToLeft
-        button_layout.WrapContents = False
-        button_layout.Margin = Padding(0)
-        button_layout.Padding = Padding(0, 10, 0, 0)
-        main_layout.Controls.Add(button_layout, 0, 10)
+        footer_panel = Panel()
+        footer_panel.Dock = DockStyle.Bottom
+        footer_panel.AutoSize = False
+        footer_panel.Height = SCAN_FOOTER_HEIGHT
+        footer_panel.MinimumSize = Size(0, SCAN_FOOTER_HEIGHT)
+        footer_panel.MaximumSize = Size(0, SCAN_FOOTER_HEIGHT)
+        footer_panel.Padding = Padding(0, 10, 0, 14)
+        footer_panel.Margin = Padding(0)
+        root_layout.Controls.Add(footer_panel, 0, 2)
+        self.footer_panel = footer_panel
 
-        self.run_button = Button()
-        self.run_button.Text = "Run"
-        self.run_button.Size = Size(104, 34)
-        self.run_button.Margin = Padding(10, 0, 0, 0)
-        self._apply_primary_button_style(self.run_button)
-        self.run_button.Click += self._confirm
-        button_layout.Controls.Add(self.run_button)
-        self.AcceptButton = self.run_button
+        footer_button_strip = FlowLayoutPanel()
+        footer_button_strip.Dock = DockStyle.Right
+        footer_button_strip.AutoSize = False
+        footer_button_strip.Width = (
+            FOOTER_BUTTON_WIDTH * 2 + FOOTER_BUTTON_GAP
+        )
+        footer_button_strip.FlowDirection = FlowDirection.LeftToRight
+        footer_button_strip.WrapContents = False
+        footer_button_strip.Padding = Padding(0)
+        footer_button_strip.Margin = Padding(0)
+        footer_panel.Controls.Add(footer_button_strip)
+
+        dock_none = getattr(DockStyle, "None")
 
         cancel_button = Button()
         cancel_button.Text = "Cancel"
-        cancel_button.Size = Size(104, 34)
-        cancel_button.Margin = Padding(10, 0, 0, 0)
+        cancel_button.AutoSize = False
+        cancel_button.Dock = dock_none
+        cancel_button.Size = Size(
+            FOOTER_BUTTON_WIDTH,
+            FOOTER_BUTTON_HEIGHT
+        )
+        cancel_button.Margin = Padding(0, 0, FOOTER_BUTTON_GAP, 0)
         self._apply_secondary_button_style(cancel_button)
         cancel_button.DialogResult = DialogResult.Cancel
-        button_layout.Controls.Add(cancel_button)
+        footer_button_strip.Controls.Add(cancel_button)
         self.CancelButton = cancel_button
+
+        self.run_button = Button()
+        self.run_button.Text = "Run"
+        self.run_button.AutoSize = False
+        self.run_button.Dock = dock_none
+        self.run_button.Size = Size(
+            FOOTER_BUTTON_WIDTH,
+            FOOTER_BUTTON_HEIGHT
+        )
+        self.run_button.Margin = Padding(0)
+        self._apply_primary_button_style(self.run_button)
+        self.run_button.Click += self._confirm
+        footer_button_strip.Controls.Add(self.run_button)
+        self.AcceptButton = self.run_button
 
         if point_clouds:
             self.point_cloud_combo.SelectedIndex = 0
@@ -745,14 +1001,42 @@ class ScanQcForm(Form):
                 "Analysis Point Cloud Source: Not available"
             )
 
+        self._restore_ui_state()
+        self._is_initializing = False
+        self.ResumeLayout(True)
+        self.PerformLayout()
+
     def _create_group(self, text):
         group = GroupBox()
         group.Text = text
         group.Dock = DockStyle.Fill
+        group.AutoSize = True
+        group.AutoSizeMode = AutoSizeMode.GrowAndShrink
         group.ForeColor = NAVY_COLOR
-        group.Font = get_preferred_font(9.5, FontStyle.Bold)
-        group.Margin = Padding(0, 7, 0, 7)
+        group.Font = get_preferred_font(10.5, FontStyle.Bold)
+        group.Margin = GROUP_VERTICAL_MARGIN
         return group
+
+    def cleanup(self):
+        if getattr(self, "_cleanup_done", False):
+            return
+        self._cleanup_done = True
+        dispose_tooltip(getattr(self, "tool_tip", None))
+        self.tool_tip = None
+
+    def _configure_scroll_fallback(self, sender, event_args):
+        configure_content_scroll(
+            self,
+            self.content_panel,
+            self.main_layout,
+            0.94
+        )
+        log_layout_snapshot(
+            u"Scan QC",
+            self,
+            self.content_panel,
+            self.main_layout
+        )
 
     def _set_tooltip(self, control, text):
         try:
@@ -765,7 +1049,9 @@ class ScanQcForm(Form):
         label.Text = u"{0}\r\n{1}".format(title, value)
         label.Dock = DockStyle.Fill
         label.AutoSize = False
+        label.MinimumSize = Size(0, CONTROL_HEIGHT)
         label.TextAlign = ContentAlignment.MiddleCenter
+        label.MinimumSize = Size(0, CONTROL_HEIGHT)
         label.BackColor = background_color
         label.ForeColor = NAVY_COLOR
         label.Font = get_preferred_font(9.5, FontStyle.Bold)
@@ -777,8 +1063,21 @@ class ScanQcForm(Form):
         label.Text = text
         label.Dock = DockStyle.Fill
         label.AutoSize = False
+        label.MinimumSize = Size(0, CONTROL_HEIGHT)
         label.TextAlign = ContentAlignment.MiddleCenter
         label.BackColor = background_color
+        label.ForeColor = NAVY_COLOR
+        label.Font = get_preferred_font(9.5, FontStyle.Bold)
+        label.Margin = Padding(4)
+        return label
+
+    def _create_report_setting_label(self, text):
+        label = Label()
+        label.Text = text
+        label.Dock = DockStyle.Fill
+        label.AutoSize = False
+        label.MinimumSize = Size(0, CONTROL_HEIGHT)
+        label.TextAlign = ContentAlignment.MiddleLeft
         label.ForeColor = NAVY_COLOR
         label.Font = get_preferred_font(9.5, FontStyle.Bold)
         label.Margin = Padding(6, 4, 6, 4)
@@ -788,7 +1087,8 @@ class ScanQcForm(Form):
         text_box = TextBox()
         text_box.Text = format_mm_value(value)
         text_box.Dock = DockStyle.Fill
-        text_box.Margin = Padding(6, 8, 6, 8)
+        text_box.MinimumSize = Size(0, CONTROL_HEIGHT)
+        text_box.Margin = Padding(4)
         text_box.Font = get_preferred_font(11.0, FontStyle.Bold)
         text_box.TextAlign = HorizontalAlignment.Center
         return text_box
@@ -798,6 +1098,7 @@ class ScanQcForm(Form):
         check_box.Text = text
         check_box.Dock = DockStyle.Fill
         check_box.AutoSize = False
+        check_box.MinimumSize = Size(0, CONTROL_HEIGHT)
         check_box.TextAlign = ContentAlignment.MiddleLeft
         check_box.Margin = Padding(6, 4, 6, 4)
         check_box.ForeColor = NAVY_COLOR
@@ -826,6 +1127,187 @@ class ScanQcForm(Form):
         button.BackColor = BUTTON_NAVY_COLOR
         button.ForeColor = Color.White
         button.UseVisualStyleBackColor = False
+
+    def _create_target_action_button(self, text, handler):
+        button = Button()
+        button.Text = text
+        button.AutoSize = False
+        button.Size = Size(
+            SMALL_ACTION_BUTTON_WIDTH,
+            SMALL_ACTION_BUTTON_HEIGHT
+        )
+        button.Margin = Padding(0, 0, 12, 0)
+        self._apply_secondary_button_style(button)
+        button.Click += handler
+        return button
+
+    def _request_target_parameter_action(self, action_name):
+        if self.target_action_handler is None:
+            return
+
+        selected_index = self.source_plan_combo.SelectedIndex
+        if 0 <= selected_index < len(self.source_plan_views):
+            source_plan_view = self.source_plan_views[selected_index]
+        else:
+            source_plan_view = None
+
+        action_result = {}
+        self.Hide()
+        try:
+            action_result = self.target_action_handler(
+                action_name,
+                source_plan_view
+            ) or {}
+        except Exception as ex:
+            action_result = {"error": u"{0}".format(ex)}
+        finally:
+            self.Show()
+            self.Activate()
+            self.BringToFront()
+
+        if action_result.get("cancelled", False):
+            return
+
+        if source_plan_view is not None and "target_count" in action_result:
+            source_view_id = get_element_id_value(source_plan_view.Id)
+            self.target_counts_by_view_id[source_view_id] = action_result.get(
+                "target_count",
+                0
+            )
+        self._update_target_status_label()
+        self._set_target_action_message(
+            action_result.get("message", action_result.get("error", u""))
+        )
+
+    def _request_mark_selected(self, sender, event_args):
+        self._request_target_parameter_action(u"mark_selected")
+
+    def _request_clear_selected(self, sender, event_args):
+        self._request_target_parameter_action(u"clear_selected")
+
+    def _request_select_targets(self, sender, event_args):
+        self._request_target_parameter_action(u"select_targets")
+
+    def _set_target_action_message(self, message):
+        base_text = u"Target filters are optional and combined with AND conditions."
+        if message:
+            self.target_filter_help_label.Text = u"{0}  {1}".format(
+                base_text,
+                message
+            )
+        else:
+            self.target_filter_help_label.Text = base_text
+        if not self._is_initializing:
+            self.PerformLayout()
+            self._configure_scroll_fallback(None, None)
+
+    def _capture_ui_state(self):
+        return {
+            "analysis_scope_index": self.analysis_scope_combo.SelectedIndex,
+            "source_plan_index": self.source_plan_combo.SelectedIndex,
+            "interior_walls_only": self.interior_walls_only_check.Checked,
+            "new_construction_only": self.new_construction_only_check.Checked,
+            "exclude_exterior_walls": self.exclude_exterior_walls_check.Checked,
+            "only_scan_qc_target_yes": self.only_scan_qc_target_yes_check.Checked,
+            "point_cloud_index": self.point_cloud_combo.SelectedIndex,
+            "ok_max_text": self.ok_max_text.Text,
+            "review_max_text": self.review_max_text.Text,
+            "create_plan_view": self.create_plan_check.Checked,
+            "create_3d_view": self.create_3d_check.Checked,
+            "create_pdf_report": self.create_pdf_check.Checked,
+            "pdf_auto_enabled_plan_view": self.pdf_auto_enabled_plan_view,
+            "preview_callouts": self.preview_callouts_check.Checked,
+            "report_sheet_mode_index": self.report_sheet_mode_combo.SelectedIndex,
+            "existing_report_sheet_index": (
+                self.existing_report_sheet_combo.SelectedIndex
+            ),
+            "top_n_callouts_text": self.top_n_callouts_text.Text,
+            "paper_size_index": self.paper_size_combo.SelectedIndex
+        }
+
+    def _restore_combo_index(self, combo, value):
+        try:
+            index = int(value)
+        except Exception:
+            return
+        if 0 <= index < combo.Items.Count:
+            combo.SelectedIndex = index
+
+    def _restore_ui_state(self):
+        state = self.initial_state
+        if not state:
+            self._update_source_plan_view(None, None)
+            self._update_selected_point_cloud(None, None)
+            return
+
+        self._restore_combo_index(
+            self.analysis_scope_combo,
+            state.get("analysis_scope_index", 0)
+        )
+        self._restore_combo_index(
+            self.source_plan_combo,
+            state.get("source_plan_index", 0)
+        )
+        self.interior_walls_only_check.Checked = bool(
+            state.get("interior_walls_only", False)
+        )
+        self.new_construction_only_check.Checked = bool(
+            state.get("new_construction_only", False)
+        )
+        self.exclude_exterior_walls_check.Checked = bool(
+            state.get("exclude_exterior_walls", False)
+        )
+        self.only_scan_qc_target_yes_check.Checked = bool(
+            state.get("only_scan_qc_target_yes", False)
+        )
+        self._restore_combo_index(
+            self.point_cloud_combo,
+            state.get("point_cloud_index", 0)
+        )
+        self.ok_max_text.Text = state.get(
+            "ok_max_text",
+            self.ok_max_text.Text
+        )
+        self.review_max_text.Text = state.get(
+            "review_max_text",
+            self.review_max_text.Text
+        )
+        self.create_plan_check.Checked = bool(
+            state.get("create_plan_view", self.create_plan_check.Checked)
+        )
+        self.create_3d_check.Checked = bool(
+            state.get("create_3d_view", self.create_3d_check.Checked)
+        )
+        self.preview_callouts_check.Checked = bool(
+            state.get("preview_callouts", self.preview_callouts_check.Checked)
+        )
+        self.pdf_auto_enabled_plan_view = bool(
+            state.get("pdf_auto_enabled_plan_view", False)
+        )
+        self._restore_combo_index(
+            self.report_sheet_mode_combo,
+            state.get("report_sheet_mode_index", 0)
+        )
+        self._restore_combo_index(
+            self.existing_report_sheet_combo,
+            state.get("existing_report_sheet_index", 0)
+        )
+        self.top_n_callouts_text.Text = state.get(
+            "top_n_callouts_text",
+            self.top_n_callouts_text.Text
+        )
+        self._restore_combo_index(
+            self.paper_size_combo,
+            state.get("paper_size_index", self.paper_size_combo.SelectedIndex)
+        )
+        self.create_pdf_check.Checked = bool(
+            state.get("create_pdf_report", self.create_pdf_check.Checked)
+        )
+        self._update_analysis_scope_ui(None, None)
+        self._update_source_plan_view(None, None)
+        self._update_selected_point_cloud(None, None)
+        self._update_report_sheet_ui(None, None)
+        self._update_pdf_dependency_ui(None, None)
 
     def _parse_tolerance_input(self, text_value, fallback, label):
         try:
@@ -893,6 +1375,7 @@ class ScanQcForm(Form):
     def _get_report_sheet_options(self):
         if self.report_sheet_mode_combo.SelectedIndex == 1:
             report_sheet_mode = REPORT_SHEET_MODE_EXISTING
+            self._ensure_existing_report_sheets_loaded()
         else:
             report_sheet_mode = REPORT_SHEET_MODE_CREATE_NEW
 
@@ -984,10 +1467,19 @@ class ScanQcForm(Form):
         selected_index = self.point_cloud_combo.SelectedIndex
         if 0 <= selected_index < len(self.point_clouds):
             selected_point_cloud = self.point_clouds[selected_index]
+            point_cloud_name = get_point_cloud_name(selected_point_cloud)
             self.selected_point_cloud_label.Text = (
                 u"Analysis Point Cloud Source: {0}".format(
-                    get_point_cloud_name(selected_point_cloud)
+                    point_cloud_name
                 )
+            )
+            self.tool_tip.SetToolTip(
+                self.point_cloud_combo,
+                point_cloud_name
+            )
+            self.tool_tip.SetToolTip(
+                self.selected_point_cloud_label,
+                point_cloud_name
             )
 
     def _update_source_plan_view(self, sender, event_args):
@@ -997,17 +1489,104 @@ class ScanQcForm(Form):
             self.selected_source_plan_label.Text = u"Selected Source Plan View: {0}".format(
                 get_source_plan_view_name(selected_source_plan_view)
             )
+            source_plan_label = get_source_plan_view_label(
+                selected_source_plan_view
+            )
+            self.tool_tip.SetToolTip(
+                self.source_plan_combo,
+                source_plan_label
+            )
+            self.tool_tip.SetToolTip(
+                self.selected_source_plan_label,
+                source_plan_label
+            )
+        self._update_target_status_label()
+
+    def _update_target_status_label(self):
+        if not hasattr(self, "target_status_label"):
+            return
+        installed = self.target_parameter_status.get("available", False)
+        installed_text = u"Installed" if installed else u"Not Installed"
+        target_count_text = u"—"
+        selected_index = self.source_plan_combo.SelectedIndex
+        if 0 <= selected_index < len(self.source_plan_views):
+            view_id = get_element_id_value(
+                self.source_plan_views[selected_index].Id
+            )
+            if view_id in self.target_counts_by_view_id:
+                target_count_text = u"{0}".format(
+                    self.target_counts_by_view_id.get(view_id, 0)
+                )
+        self.target_status_label.Text = (
+            u"SCAN_QC_TARGET {0}    |    Targets: {1}".format(
+                installed_text,
+                target_count_text
+            )
+        )
 
     def _update_analysis_scope_ui(self, sender, event_args):
         show_selected_walls = self.analysis_scope_combo.SelectedIndex == 1
         self.selected_walls_group.Visible = show_selected_walls
-        self.selected_walls_row_style.Height = 108.0 if show_selected_walls else 0.0
+        if show_selected_walls:
+            self.selected_walls_row_style.SizeType = SizeType.AutoSize
+        else:
+            self.selected_walls_row_style.SizeType = SizeType.Absolute
+            self.selected_walls_row_style.Height = 0.0
         self.PerformLayout()
+        if not self._is_initializing:
+            self._configure_scroll_fallback(None, None)
+
+    def _populate_existing_report_sheet_combo(self):
+        self.existing_report_sheet_combo.BeginUpdate()
+        try:
+            self.existing_report_sheet_combo.Items.Clear()
+            for sheet in self.existing_report_sheets:
+                self.existing_report_sheet_combo.Items.Add(
+                    get_sheet_label(sheet)
+                )
+            if self.existing_report_sheets:
+                self.existing_report_sheet_combo.SelectedIndex = 0
+            elif self.existing_report_sheets_loaded:
+                self.existing_report_sheet_combo.Items.Add(
+                    "No existing Sheets found"
+                )
+                self.existing_report_sheet_combo.SelectedIndex = 0
+            else:
+                self.existing_report_sheet_combo.Items.Add(
+                    "Sheets load when Use Existing Sheet is selected"
+                )
+                self.existing_report_sheet_combo.SelectedIndex = 0
+        finally:
+            self.existing_report_sheet_combo.EndUpdate()
+
+    def _ensure_existing_report_sheets_loaded(self):
+        if self.existing_report_sheets_loaded:
+            return
+        self.existing_report_sheets_loaded = True
+        if self.existing_report_sheet_loader is not None:
+            try:
+                self.existing_report_sheets = list(
+                    self.existing_report_sheet_loader() or []
+                )
+            except Exception:
+                self.existing_report_sheets = []
+        self._populate_existing_report_sheet_combo()
 
     def _update_report_sheet_ui(self, sender, event_args):
         use_existing_sheet = self.report_sheet_mode_combo.SelectedIndex == 1
+        if (
+            use_existing_sheet
+            and not self._is_initializing
+            and not self.existing_report_sheets_loaded
+        ):
+            self._ensure_existing_report_sheets_loaded()
+        self.existing_report_sheet_combo.Visible = use_existing_sheet
         self.existing_report_sheet_combo.Enabled = (
             use_existing_sheet and bool(self.existing_report_sheets)
+        )
+        self.report_settings_layout.SetColumnSpan(
+            self.report_sheet_mode_combo,
+            1 if use_existing_sheet else 2
         )
 
     def _update_pdf_dependency_ui(self, sender, event_args):
@@ -1071,11 +1650,9 @@ class ScanQcForm(Form):
             if pdf_path_warning:
                 tolerance_warnings.append(pdf_path_warning)
             if pdf_export_cancelled:
-                self.phase_note.Text = (
-                    "PDF export cancelled by user. Scan QC was not started. "
-                    "Choose a PDF path, or uncheck Create PDF Report and run again."
-                )
-                self.phase_note.BackColor = WARNING_BACKGROUND_COLOR
+                self.result = None
+                self.DialogResult = DialogResult.Cancel
+                self.Close()
                 return
 
         self.result = {
@@ -1125,19 +1702,70 @@ def request_scan_qc_options(
     source_plan_views,
     existing_report_sheets,
     default_source_plan_view_id,
-    settings
+    settings,
+    target_parameter_status=None,
+    target_counts_by_view_id=None,
+    initial_state=None,
+    target_action_handler=None,
+    existing_report_sheet_loader=None,
+    startup_metrics=None
 ):
+    def _scan_profile_metrics():
+        metrics = get_runtime_diagnostics()
+        if startup_metrics:
+            total_watch = startup_metrics.get("total_watch")
+            if total_watch is not None:
+                metrics["scan_button_elapsed_ms"] = total_watch.ElapsedMilliseconds
+        return metrics
+
+    close_profile = create_ui_close_profile(
+        u"Scan QC",
+        _scan_profile_metrics
+    )
+    construction_watch = Stopwatch.StartNew()
     options_form = ScanQcForm(
         selected_wall_count,
         point_clouds,
         source_plan_views,
         existing_report_sheets,
         default_source_plan_view_id,
-        settings
+        settings,
+        target_parameter_status,
+        target_counts_by_view_id,
+        initial_state,
+        target_action_handler,
+        existing_report_sheet_loader
     )
-    dialog_result = options_form.ShowDialog()
-    selected_options = options_form.result
-    options_form.Dispose()
+    construction_watch.Stop()
+    close_profile.attach(options_form)
+    if startup_metrics:
+        logger = startup_metrics.get("logger")
+        if logger is not None:
+            try:
+                logger.info(
+                    "[Scan QC Startup] Form/control construction: {0} ms".format(
+                        construction_watch.ElapsedMilliseconds
+                    )
+                )
+                logger.info(
+                    "[Scan QC Startup] ComboBox population: {0} ms".format(
+                        options_form.combo_population_ms
+                    )
+                )
+                total_watch = startup_metrics.get("total_watch")
+                if total_watch is not None:
+                    logger.info(
+                        "[Scan QC Startup] Total before Form display: {0} ms".format(
+                            total_watch.ElapsedMilliseconds
+                        )
+                    )
+            except Exception:
+                pass
+    try:
+        dialog_result = close_profile.show_dialog()
+        selected_options = options_form.result
+    finally:
+        close_profile.dispose()
 
     if dialog_result != DialogResult.OK or selected_options is None:
         return None

@@ -37,7 +37,6 @@ from collectors import (
     to_text
 )
 from config_loader import load_config
-from export_options import request_export_options
 from exporters import export_styled_xlsx, save_full_csv, save_summary_csv
 from grouping import (
     build_issue_group_rows,
@@ -45,7 +44,8 @@ from grouping import (
     build_summary_data,
     get_qc_status
 )
-from report_history import select_latest_report_path, write_latest_report_path
+from qc_workflow_ui import request_doc_qc_options
+from report_history import open_file, select_latest_report_path, write_latest_report_path
 from report_ui import html_escape, render_report
 
 
@@ -64,6 +64,14 @@ ACTIVE_CONFIG_DISPLAY = u"{0} ({1})".format(
 )
 
 doc = revit.doc
+selected_export_options = request_doc_qc_options(
+    REPORTS_DIR,
+    ACTIVE_CONFIG_DISPLAY
+)
+
+if selected_export_options is None:
+    script.exit()
+
 output = script.get_output()
 output.set_title("Revit QC Report {0}".format(VERSION))
 if CONFIG_META.get("warning", u""):
@@ -73,14 +81,6 @@ if CONFIG_META.get("warning", u""):
             html_escape(CONFIG_META["warning"])
         )
     )
-
-selected_export_options = request_export_options(REPORTS_DIR, quick_mode=False)
-
-if selected_export_options is None:
-    output.print_html(
-        u"<h2>Revit QC Report</h2><p>Export cancelled by user</p>"
-    )
-    script.exit()
 
 run_time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
 sheet_config = config["sheet_qc"]
@@ -95,24 +95,37 @@ checked_views = collect_views(
     doc,
     view_config["supported_view_types"]
 )
-parameter_collections = collect_parameter_elements(
-    doc,
-    parameter_config["rules"]
-)
+selected_categories = selected_export_options.get("qc_categories", {})
+run_sheet_qc = selected_categories.get("sheet_qc", True)
+run_view_qc = selected_categories.get("view_qc", True)
+run_parameter_qc = selected_categories.get("parameter_qc", True)
+
+if run_parameter_qc:
+    parameter_collections = collect_parameter_elements(
+        doc,
+        parameter_config["rules"]
+    )
+else:
+    parameter_collections = []
 
 issue_rows = []
-run_sheet_checks(sheets, issue_rows, sheet_config)
-run_view_checks(
-    checked_views,
-    placed_view_ids,
-    issue_rows,
-    view_config
-)
-checked_parameter_elements = run_parameter_checks(
-    doc,
-    parameter_collections,
-    issue_rows
-)
+if run_sheet_qc:
+    run_sheet_checks(sheets, issue_rows, sheet_config)
+if run_view_qc:
+    run_view_checks(
+        checked_views,
+        placed_view_ids,
+        issue_rows,
+        view_config
+    )
+if run_parameter_qc:
+    checked_parameter_elements = run_parameter_checks(
+        doc,
+        parameter_collections,
+        issue_rows
+    )
+else:
+    checked_parameter_elements = 0
 
 issue_group_rows = build_issue_group_rows(issue_rows)
 display_issue_group_rows = build_issue_group_rows(
@@ -129,8 +142,8 @@ key_issue_rows = build_key_issue_rows(
 )
 summary_data = build_summary_data(
     issue_rows,
-    len(sheets),
-    len(checked_views)
+    len(sheets) if run_sheet_qc else 0,
+    len(checked_views) if run_view_qc else 0
 )
 qc_status = get_qc_status(summary_data)
 
@@ -142,6 +155,14 @@ report_context = {
     "active_config_display": ACTIVE_CONFIG_DISPLAY,
     "active_preset": ACTIVE_PRESET_NAME,
     "run_mode": u"DOC QC",
+    "review_scope": selected_export_options.get(
+        "review_scope",
+        u"Current Project"
+    ),
+    "report_style": selected_export_options.get(
+        "report_style",
+        u"Full + Summary"
+    ),
     "checked_parameter_elements": checked_parameter_elements,
     "review_group_count": len(issue_group_rows),
     "run_time": run_time,
@@ -241,3 +262,15 @@ if history_error:
         </div>
         """.format(html_escape(history_error))
     )
+
+if (
+    selected_export_options.get("open_report_after_run", False)
+    and latest_report_path
+):
+    opened_report, open_report_error = open_file(latest_report_path)
+    if not opened_report:
+        output.print_html(
+            u"<div style='color:#b71c1c;'>Report 열기 실패: {0}</div>".format(
+                html_escape(open_report_error)
+            )
+        )

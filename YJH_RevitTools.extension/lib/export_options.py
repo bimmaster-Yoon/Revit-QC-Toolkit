@@ -36,6 +36,9 @@ from System.Windows.Forms import (
     ToolTip
 )
 
+from ui_close_profiler import create_ui_close_profile
+from qc_ui_style import configure_tooltip, dispose_tooltip
+
 
 LATEST_EXPORT_FOLDER_FILE = "latest_export_folder.txt"
 NAVY_COLOR = Color.FromArgb(38, 54, 69)
@@ -177,8 +180,8 @@ class ExportOptionsForm(Form):
         last_label.Padding = Padding(0, 2, 0, 0)
         main_layout.Controls.Add(last_label, 0, 1)
 
-        self.last_folder_tooltip = ToolTip()
-        self.last_folder_tooltip.SetToolTip(last_label, last_label.Text)
+        self.tool_tip = configure_tooltip(ToolTip())
+        self.tool_tip.SetToolTip(last_label, last_label.Text)
 
         folder_layout = TableLayoutPanel()
         folder_layout.Dock = DockStyle.Fill
@@ -216,8 +219,7 @@ class ExportOptionsForm(Form):
         self.folder_text.TextChanged += self._update_folder_tooltip
         folder_input_layout.Controls.Add(self.folder_text, 0, 0)
 
-        self.folder_tooltip = ToolTip()
-        self.folder_tooltip.SetToolTip(self.folder_text, self.folder_text.Text)
+        self.tool_tip.SetToolTip(self.folder_text, self.folder_text.Text)
 
         self.browse_button = Button()
         self.browse_button.Text = "Browse..."
@@ -357,8 +359,15 @@ class ExportOptionsForm(Form):
             )
 
     def _update_folder_tooltip(self, sender, event_args):
-        if hasattr(self, "folder_tooltip"):
-            self.folder_tooltip.SetToolTip(self.folder_text, self.folder_text.Text)
+        if getattr(self, "tool_tip", None) is not None:
+            self.tool_tip.SetToolTip(self.folder_text, self.folder_text.Text)
+
+    def cleanup(self):
+        if getattr(self, "_cleanup_done", False):
+            return
+        self._cleanup_done = True
+        dispose_tooltip(getattr(self, "tool_tip", None))
+        self.tool_tip = None
 
     def _browse_folder(self, sender, event_args):
         dialog = FolderBrowserDialog()
@@ -369,8 +378,13 @@ class ExportOptionsForm(Form):
         if os.path.isdir(current_folder):
             dialog.SelectedPath = current_folder
 
-        if dialog.ShowDialog(self) == DialogResult.OK:
+        dialog_result = dialog.ShowDialog(self)
+        if dialog_result == DialogResult.OK:
             self.folder_text.Text = dialog.SelectedPath
+        else:
+            self.result = None
+            self.DialogResult = DialogResult.Cancel
+            self.Close()
 
         dialog.Dispose()
 
@@ -412,11 +426,15 @@ class ExportOptionsForm(Form):
 
 
 def request_export_options(reports_dir, quick_mode=False):
+    close_profile = create_ui_close_profile(u"Report Export Options")
     last_folder = read_latest_export_folder(reports_dir)
     options_form = ExportOptionsForm(last_folder, quick_mode)
-    dialog_result = options_form.ShowDialog()
-    selected_options = options_form.result
-    options_form.Dispose()
+    close_profile.attach(options_form)
+    try:
+        dialog_result = close_profile.show_dialog()
+        selected_options = options_form.result
+    finally:
+        close_profile.dispose()
 
     if dialog_result != DialogResult.OK or selected_options is None:
         return None

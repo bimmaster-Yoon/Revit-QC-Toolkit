@@ -11,8 +11,6 @@ from System.Diagnostics import Process, ProcessStartInfo
 from System.Drawing import (
     Color,
     ContentAlignment,
-    Font,
-    FontFamily,
     FontStyle,
     Size
 )
@@ -30,7 +28,6 @@ from System.Windows.Forms import (
     FormStartPosition,
     FlowDirection,
     FlowLayoutPanel,
-    FlatStyle,
     GroupBox,
     Label,
     MessageBox,
@@ -55,34 +52,37 @@ from config_loader import (
 from exporters import get_xlsx_environment_status, probe_external_python_path
 from report_history import open_file
 from report_ui import html_escape
+from ui_close_profiler import create_ui_close_profile
+from qc_ui_style import (
+    BUTTON_GAP,
+    BUTTON_HEIGHT,
+    BUTTON_WIDTH,
+    CARD_GAP,
+    GROUP_INNER_PADDING,
+    HEADER_BOTTOM_MARGIN,
+    HEADER_TOP_PADDING,
+    LIGHT_FILL_COLOR,
+    MUTED_COLOR,
+    NAVY_COLOR,
+    OUTER_MARGIN,
+    ROW_GAP,
+    SECTION_GAP,
+    SETTINGS_FOOTER_BUTTON_HEIGHT,
+    SETTINGS_FOOTER_BUTTON_WIDTH,
+    WIDE_BUTTON_WIDTH,
+    WINDOW_PADDING,
+    apply_primary_button_style,
+    apply_secondary_button_style,
+    configure_content_scroll,
+    get_preferred_font
+)
 
 
-NAVY_COLOR = Color.FromArgb(38, 54, 69)
-SOFT_NAVY_COLOR = Color.FromArgb(74, 91, 106)
-BUTTON_NAVY_COLOR = Color.FromArgb(83, 103, 119)
-BUTTON_HOVER_COLOR = Color.FromArgb(70, 88, 103)
-MUTED_COLOR = Color.FromArgb(95, 111, 125)
-BORDER_COLOR = Color.FromArgb(214, 221, 227)
-SECONDARY_BORDER_COLOR = Color.FromArgb(199, 208, 216)
-LIGHT_FILL_COLOR = Color.FromArgb(244, 246, 248)
 WARNING_FILL_COLOR = Color.FromArgb(255, 243, 232)
 READY_COLOR = Color.FromArgb(30, 122, 58)
 WARNING_COLOR = Color.FromArgb(200, 95, 26)
-
-
-def get_preferred_font(size, style=FontStyle.Regular):
-    preferred_names = [u"Segoe UI", u"Malgun Gothic", u"Pretendard", u"SUIT"]
-
-    try:
-        available_names = [family.Name.lower() for family in FontFamily.Families]
-        for font_name in preferred_names:
-            if font_name.lower() in available_names:
-                return Font(font_name, size, style)
-    except Exception:
-        pass
-
-    return Font(u"Segoe UI", size, style)
-
+SETTINGS_FOOTER_HEIGHT = 64
+SETTINGS_FOOTER_BUTTON_GAP = 12
 
 def is_codex_runtime_path(python_path):
     normalized_path = (python_path or u"").replace(u"/", u"\\").lower()
@@ -116,6 +116,7 @@ class QCSettingsForm(Form):
         reports_dir
     ):
         Form.__init__(self)
+        self.SuspendLayout()
         self.output = output
         self.default_config_path = default_config_path
         self.local_config_path = local_config_path
@@ -135,8 +136,8 @@ class QCSettingsForm(Form):
         self.selected_python_path = u""
 
         self.Text = "Revit QC Settings"
-        self.ClientSize = Size(1040, 1040)
-        self.MinimumSize = Size(1020, 1000)
+        self.ClientSize = Size(1120, 1140)
+        self.MinimumSize = Size(1040, 1040)
         self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = True
@@ -145,63 +146,78 @@ class QCSettingsForm(Form):
         self.BackColor = Color.White
         self.ForeColor = NAVY_COLOR
         self.Font = get_preferred_font(10.0)
-        self.AutoScaleMode = AutoScaleMode.Font
+        self.AutoScaleMode = AutoScaleMode.Dpi
 
         self.root_layout = TableLayoutPanel()
         self.root_layout.Dock = DockStyle.Fill
+        self.root_layout.Padding = Padding(
+            OUTER_MARGIN,
+            HEADER_TOP_PADDING,
+            OUTER_MARGIN,
+            OUTER_MARGIN
+        )
         self.root_layout.ColumnCount = 1
         self.root_layout.RowCount = 3
         self.root_layout.ColumnStyles.Add(
             ColumnStyle(SizeType.Percent, 100.0)
         )
+        self.root_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         self.root_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        self.root_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 60.0))
-        self.root_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 24.0))
+        self.root_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         self.Controls.Add(self.root_layout)
+
+        header_panel = Panel()
+        header_panel.Dock = DockStyle.Fill
+        header_panel.AutoSize = True
+        header_panel.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        self.root_layout.Controls.Add(header_panel, 0, 0)
+        intro_label = Label()
+        intro_label.Text = "Manage Excel reports and QC rules."
+        intro_label.Dock = DockStyle.Top
+        intro_label.AutoSize = True
+        intro_label.AutoEllipsis = True
+        intro_label.MinimumSize = Size(0, 58)
+        intro_label.Font = get_preferred_font(16.0, FontStyle.Bold)
+        intro_label.ForeColor = NAVY_COLOR
+        intro_label.Padding = Padding(0, 4, 0, 0)
+        header_panel.Controls.Add(intro_label)
 
         self.main_panel = Panel()
         self.main_panel.Dock = DockStyle.Fill
         self.main_panel.AutoScroll = False
         self.main_panel.BackColor = Color.White
-        self.root_layout.Controls.Add(self.main_panel, 0, 0)
+        self.main_panel.Margin = Padding(0, HEADER_BOTTOM_MARGIN, 0, 0)
+        self.root_layout.Controls.Add(self.main_panel, 0, 1)
 
         self.main_layout = TableLayoutPanel()
-        self.main_layout.Dock = DockStyle.Fill
-        self.main_layout.AutoSize = False
-        self.main_layout.Padding = Padding(28)
+        self.main_layout.Dock = DockStyle.Top
+        self.main_layout.AutoSize = True
+        self.main_layout.Padding = Padding(0)
         self.main_layout.ColumnCount = 1
-        self.main_layout.RowCount = 4
+        self.main_layout.RowCount = 3
         self.main_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        self.main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 68.0))
-        self.main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 340.0))
-        self.main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 308.0))
-        self.main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 184.0))
+        self.main_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        self.main_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        self.main_layout.RowStyles.Add(RowStyle(SizeType.AutoSize))
         self.main_panel.Controls.Add(self.main_layout)
-
-        intro_label = Label()
-        intro_label.Text = "Manage Excel reports and QC rules."
-        intro_label.Dock = DockStyle.Fill
-        intro_label.AutoSize = False
-        intro_label.AutoEllipsis = True
-        intro_label.MinimumSize = Size(0, 54)
-        intro_label.Margin = Padding(0, 0, 0, 14)
-        intro_label.Font = get_preferred_font(13.0, FontStyle.Bold)
-        intro_label.ForeColor = NAVY_COLOR
-        intro_label.Padding = Padding(0, 4, 0, 0)
-        self.main_layout.Controls.Add(intro_label, 0, 0)
 
         self._build_report_setup()
         self._build_preset_section()
         self._build_rule_summary()
         self._build_advanced_actions()
         self._reload_all()
+        self.Shown += self._configure_scroll_fallback
+        self.ResumeLayout(True)
+        self.PerformLayout()
 
     def _build_report_setup(self):
         group = self._create_group("Excel Report")
-        group.MinimumSize = Size(0, 318)
-        self.main_layout.Controls.Add(group, 0, 1)
+        group.MinimumSize = Size(0, 328)
+        self.main_layout.Controls.Add(group, 0, 0)
         layout = TableLayoutPanel()
         layout.Dock = DockStyle.Fill
+        layout.AutoSize = True
+        layout.Margin = Padding(0)
         layout.ColumnCount = 1
         layout.RowCount = 4
         layout.RowStyles.Add(RowStyle(SizeType.Absolute, 54.0))
@@ -213,6 +229,7 @@ class QCSettingsForm(Form):
 
         path_layout = TableLayoutPanel()
         path_layout.Dock = DockStyle.Fill
+        path_layout.Margin = Padding(0)
         path_layout.ColumnCount = 3
         path_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 110.0))
         path_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
@@ -237,6 +254,7 @@ class QCSettingsForm(Form):
 
         status_layout = TableLayoutPanel()
         status_layout.Dock = DockStyle.Fill
+        status_layout.Margin = Padding(0)
         status_layout.ColumnCount = 3
         status_layout.RowCount = 1
         for column_index in range(3):
@@ -262,11 +280,18 @@ class QCSettingsForm(Form):
 
         action_layout = TableLayoutPanel()
         action_layout.Dock = DockStyle.Fill
+        action_layout.Margin = Padding(0)
         action_layout.ColumnCount = 4
         action_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        action_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 125.0))
-        action_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 12.0))
-        action_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 125.0))
+        action_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, float(BUTTON_WIDTH))
+        )
+        action_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, float(BUTTON_GAP))
+        )
+        action_layout.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, float(BUTTON_WIDTH))
+        )
         layout.Controls.Add(action_layout, 0, 2)
         test_button = self._create_button("Test", self._test_environment)
         test_button.Margin = Padding(0, 4, 0, 12)
@@ -277,10 +302,12 @@ class QCSettingsForm(Form):
 
     def _build_preset_section(self):
         group = self._create_group("QC Rules")
-        group.MinimumSize = Size(0, 286)
-        self.main_layout.Controls.Add(group, 0, 2)
+        group.MinimumSize = Size(0, 300)
+        self.main_layout.Controls.Add(group, 0, 1)
         layout = TableLayoutPanel()
         layout.Dock = DockStyle.Fill
+        layout.AutoSize = True
+        layout.Margin = Padding(0)
         layout.ColumnCount = 1
         layout.RowCount = 6
         layout.RowStyles.Add(RowStyle(SizeType.Absolute, 54.0))
@@ -293,6 +320,7 @@ class QCSettingsForm(Form):
 
         preset_layout = TableLayoutPanel()
         preset_layout.Dock = DockStyle.Fill
+        preset_layout.Margin = Padding(0)
         preset_layout.ColumnCount = 3
         preset_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 110.0))
         preset_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
@@ -338,31 +366,33 @@ class QCSettingsForm(Form):
         self.preset_description.Font = get_preferred_font(9.0)
         self.preset_description.TextAlign = ContentAlignment.MiddleLeft
         self.preset_description.Padding = Padding(10, 0, 10, 0)
+        self.preset_description.Margin = Padding(0)
         layout.Controls.Add(self.preset_description, 0, 3)
 
         buttons = FlowLayoutPanel()
         buttons.Dock = DockStyle.Fill
         buttons.FlowDirection = FlowDirection.LeftToRight
         buttons.WrapContents = False
-        buttons.Padding = Padding(0, 4, 0, 12)
+        buttons.Padding = Padding(0, ROW_GAP, 0, 0)
+        buttons.Margin = Padding(0)
         layout.Controls.Add(buttons, 0, 5)
         dock_none = getattr(DockStyle, "None")
         copy_button = self._create_button("Copy", self._duplicate_preset)
         copy_button.Dock = dock_none
-        copy_button.Size = Size(155, 42)
-        copy_button.Margin = Padding(0, 0, 12, 0)
+        copy_button.Size = Size(WIDE_BUTTON_WIDTH, BUTTON_HEIGHT)
+        copy_button.Margin = Padding(0, 0, BUTTON_GAP, 0)
         buttons.Controls.Add(copy_button)
         open_folder_button = self._create_button(
             "Open Rule Folder",
             self._open_config_folder
         )
         open_folder_button.Dock = dock_none
-        open_folder_button.Size = Size(245, 42)
-        open_folder_button.Margin = Padding(0, 0, 12, 0)
+        open_folder_button.Size = Size(WIDE_BUTTON_WIDTH, BUTTON_HEIGHT)
+        open_folder_button.Margin = Padding(0, 0, BUTTON_GAP, 0)
         buttons.Controls.Add(open_folder_button)
         reload_button = self._create_button("Reload", self._reload_presets_click)
         reload_button.Dock = dock_none
-        reload_button.Size = Size(155, 42)
+        reload_button.Size = Size(WIDE_BUTTON_WIDTH, BUTTON_HEIGHT)
         reload_button.Margin = Padding(0)
         buttons.Controls.Add(reload_button)
 
@@ -370,9 +400,11 @@ class QCSettingsForm(Form):
         group = self._create_group("Rule Count")
         group.MinimumSize = Size(0, 184)
         group.Margin = Padding(0)
-        self.main_layout.Controls.Add(group, 0, 3)
+        self.main_layout.Controls.Add(group, 0, 2)
         layout = TableLayoutPanel()
         layout.Dock = DockStyle.Fill
+        layout.AutoSize = True
+        layout.Margin = Padding(0)
         layout.ColumnCount = 4
         layout.RowCount = 1
         for column_index in range(4):
@@ -392,47 +424,99 @@ class QCSettingsForm(Form):
         )
 
     def _build_advanced_actions(self):
-        layout = FlowLayoutPanel()
-        layout.Dock = DockStyle.Fill
-        layout.AutoSize = False
-        layout.FlowDirection = FlowDirection.RightToLeft
-        layout.WrapContents = False
-        layout.Padding = Padding(28, 8, 28, 10)
-        self.root_layout.Controls.Add(layout, 0, 1)
-        dock_none = getattr(DockStyle, "None")
-        close_button = self._create_button("Close", self._close_form)
-        self._apply_primary_button_style(close_button)
-        close_button.Dock = dock_none
-        close_button.Size = Size(145, 42)
-        close_button.Margin = Padding(12, 0, 0, 0)
-        layout.Controls.Add(close_button)
-        open_log_button = self._create_button(
-            "Open Log",
-            self._open_debug_log
+        footer_panel = Panel()
+        footer_panel.Dock = DockStyle.Bottom
+        footer_panel.AutoSize = False
+        footer_panel.Height = SETTINGS_FOOTER_HEIGHT
+        footer_panel.MinimumSize = Size(0, SETTINGS_FOOTER_HEIGHT)
+        footer_panel.MaximumSize = Size(0, SETTINGS_FOOTER_HEIGHT)
+        footer_panel.Padding = Padding(0, 8, 0, 14)
+        footer_panel.Margin = Padding(0)
+        self.root_layout.Controls.Add(footer_panel, 0, 2)
+
+        button_strip = FlowLayoutPanel()
+        button_strip.Dock = DockStyle.Right
+        button_strip.AutoSize = False
+        button_strip.Width = (
+            SETTINGS_FOOTER_BUTTON_WIDTH * 3
+            + SETTINGS_FOOTER_BUTTON_GAP * 2
         )
-        open_log_button.Dock = dock_none
-        open_log_button.Size = Size(145, 42)
-        open_log_button.Margin = Padding(12, 0, 0, 0)
-        layout.Controls.Add(open_log_button)
+        button_strip.FlowDirection = FlowDirection.LeftToRight
+        button_strip.WrapContents = False
+        button_strip.Padding = Padding(0)
+        button_strip.Margin = Padding(0)
+        footer_panel.Controls.Add(button_strip)
+
+        dock_none = getattr(DockStyle, "None")
         self.show_details_button = self._create_button(
             "Details",
             self._show_details
         )
         self.show_details_button.Dock = dock_none
-        self.show_details_button.Size = Size(145, 42)
-        self.show_details_button.Margin = Padding(12, 0, 0, 0)
-        layout.Controls.Add(self.show_details_button)
+        self.show_details_button.Size = Size(
+            SETTINGS_FOOTER_BUTTON_WIDTH,
+            SETTINGS_FOOTER_BUTTON_HEIGHT
+        )
+        self.show_details_button.Margin = Padding(
+            0,
+            0,
+            SETTINGS_FOOTER_BUTTON_GAP,
+            0
+        )
+        button_strip.Controls.Add(self.show_details_button)
+
+        open_log_button = self._create_button(
+            "Open Log",
+            self._open_debug_log
+        )
+        open_log_button.Dock = dock_none
+        open_log_button.Size = Size(
+            SETTINGS_FOOTER_BUTTON_WIDTH,
+            SETTINGS_FOOTER_BUTTON_HEIGHT
+        )
+        open_log_button.Margin = Padding(
+            0,
+            0,
+            SETTINGS_FOOTER_BUTTON_GAP,
+            0
+        )
+        button_strip.Controls.Add(open_log_button)
+
+        close_button = self._create_button("Close", self._close_form)
+        self._apply_primary_button_style(close_button)
+        close_button.Dock = dock_none
+        close_button.Size = Size(
+            SETTINGS_FOOTER_BUTTON_WIDTH,
+            SETTINGS_FOOTER_BUTTON_HEIGHT
+        )
+        close_button.Margin = Padding(0)
+        button_strip.Controls.Add(close_button)
         self.CancelButton = close_button
 
     def _create_group(self, title):
         group = GroupBox()
         group.Text = title
         group.Dock = DockStyle.Fill
+        group.AutoSize = True
+        group.AutoSizeMode = AutoSizeMode.GrowAndShrink
         group.ForeColor = NAVY_COLOR
-        group.Font = get_preferred_font(12.0, FontStyle.Bold)
-        group.Padding = Padding(8, 6, 8, 6)
-        group.Margin = Padding(0, 0, 0, 22)
+        group.Font = get_preferred_font(10.5, FontStyle.Bold)
+        group.Padding = Padding(
+            GROUP_INNER_PADDING,
+            12,
+            GROUP_INNER_PADDING,
+            GROUP_INNER_PADDING
+        )
+        group.Margin = Padding(0, 0, 0, SECTION_GAP)
         return group
+
+    def _configure_scroll_fallback(self, sender, event_args):
+        configure_content_scroll(
+            self,
+            self.main_panel,
+            self.main_layout,
+            0.94
+        )
 
     def _create_label(self, text, bold=False):
         label = Label()
@@ -452,38 +536,27 @@ class QCSettingsForm(Form):
         button.Text = text
         button.AutoSize = False
         button.Dock = DockStyle.Fill
-        button.Margin = Padding(0, 3, 10, 3)
-        button.MinimumSize = Size(0, 42)
-        button.Font = get_preferred_font(10.0)
+        button.Margin = Padding(0)
+        button.MinimumSize = Size(0, BUTTON_HEIGHT)
+        button.Font = get_preferred_font(9.5)
         button.TextAlign = ContentAlignment.MiddleCenter
         button.UseCompatibleTextRendering = False
         button.Padding = Padding(0)
-        button.FlatStyle = FlatStyle.Flat
-        button.FlatAppearance.BorderSize = 1
-        button.FlatAppearance.BorderColor = SECONDARY_BORDER_COLOR
-        button.FlatAppearance.MouseOverBackColor = LIGHT_FILL_COLOR
-        button.FlatAppearance.MouseDownBackColor = BORDER_COLOR
-        button.BackColor = Color.White
-        button.ForeColor = NAVY_COLOR
-        button.UseVisualStyleBackColor = False
+        apply_secondary_button_style(button)
         button.Click += handler
         return button
 
     def _apply_primary_button_style(self, button):
-        button.FlatStyle = FlatStyle.Flat
-        button.FlatAppearance.BorderSize = 1
-        button.FlatAppearance.BorderColor = BUTTON_NAVY_COLOR
-        button.FlatAppearance.MouseOverBackColor = BUTTON_HOVER_COLOR
-        button.FlatAppearance.MouseDownBackColor = SOFT_NAVY_COLOR
-        button.BackColor = BUTTON_NAVY_COLOR
-        button.ForeColor = Color.White
-        button.UseVisualStyleBackColor = False
+        apply_primary_button_style(button)
 
     def _add_status_card(self, layout, column_index, title):
         card = TableLayoutPanel()
         card.Dock = DockStyle.Fill
         card.BackColor = LIGHT_FILL_COLOR
-        card.Margin = Padding(4, 0, 12, 12)
+        half_gap = int(CARD_GAP / 2)
+        left_margin = 0 if column_index == 0 else half_gap
+        right_margin = 0 if column_index == 2 else half_gap
+        card.Margin = Padding(left_margin, 4, right_margin, ROW_GAP)
         card.MinimumSize = Size(0, 110)
         card.Padding = Padding(0, 10, 0, 10)
         card.ColumnCount = 1
@@ -515,7 +588,10 @@ class QCSettingsForm(Form):
         card = TableLayoutPanel()
         card.Dock = DockStyle.Fill
         card.BackColor = LIGHT_FILL_COLOR
-        card.Margin = Padding(4, 6, 12, 12)
+        half_gap = int(CARD_GAP / 2)
+        left_margin = 0 if column_index == 0 else half_gap
+        right_margin = 0 if column_index == 3 else half_gap
+        card.Margin = Padding(left_margin, 6, right_margin, ROW_GAP)
         card.MinimumSize = Size(0, 116)
         card.Padding = Padding(0, 4, 0, 6)
         card.ColumnCount = 1
@@ -667,13 +743,17 @@ class QCSettingsForm(Form):
 
     def _reload_presets(self, selected_file_name=None):
         self.presets = list_qc_presets(self.config_folder)
-        self.preset_combo.Items.Clear()
         selected_index = -1
-        for preset_index, preset in enumerate(self.presets):
-            display_name = preset.get("preset_name", preset["file_name"])
-            self.preset_combo.Items.Add(display_name)
-            if preset["file_name"] == selected_file_name:
-                selected_index = preset_index
+        self.preset_combo.BeginUpdate()
+        try:
+            self.preset_combo.Items.Clear()
+            for preset_index, preset in enumerate(self.presets):
+                display_name = preset.get("preset_name", preset["file_name"])
+                self.preset_combo.Items.Add(display_name)
+                if preset["file_name"] == selected_file_name:
+                    selected_index = preset_index
+        finally:
+            self.preset_combo.EndUpdate()
 
         if selected_index < 0 and self.presets:
             selected_index = 0
@@ -936,6 +1016,7 @@ def show_settings_dialog(
     extension_dir,
     reports_dir
 ):
+    close_profile = create_ui_close_profile(u"QC Settings")
     settings_form = QCSettingsForm(
         output,
         default_config_path,
@@ -943,5 +1024,8 @@ def show_settings_dialog(
         extension_dir,
         reports_dir
     )
-    settings_form.ShowDialog()
-    settings_form.Dispose()
+    close_profile.attach(settings_form)
+    try:
+        close_profile.show_dialog()
+    finally:
+        close_profile.dispose()

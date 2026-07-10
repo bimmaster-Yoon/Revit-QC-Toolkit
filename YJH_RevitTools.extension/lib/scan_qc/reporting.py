@@ -100,7 +100,16 @@ def _render_standards_source(output, standards_source):
             _yes_no(standards_source["standards_rvt_exists"])
         ]
     ]
-    source_rows.extend(_standards_rows(standards_source, u"standards file"))
+    if standards_source.get("standards_document_inspected", False):
+        source_rows.extend(
+            _standards_rows(standards_source, u"standards file")
+        )
+    else:
+        source_rows.extend([
+            [standards_source["plan_template_name"], u"Not inspected"],
+            [standards_source["view3d_template_name"], u"Not inspected"],
+            [standards_source["base_3d_view_name"], u"Not inspected"]
+        ])
     output.print_table(
         table_data=source_rows,
         columns=[u"Standards Item", u"Status"]
@@ -110,6 +119,17 @@ def _render_standards_source(output, standards_source):
         output.print_md(
             "> **Warning:** The configured standards RVT file was not found. "
             "The source standards could not be inspected."
+        )
+        return
+
+    if not standards_source.get("standards_document_inspected", False):
+        output.print_md(
+            u"> Standards source inspection was skipped: {0}".format(
+                standards_source.get(
+                    "inspection_skipped_reason",
+                    u"Source inspection was not required."
+                )
+            )
         )
         return
 
