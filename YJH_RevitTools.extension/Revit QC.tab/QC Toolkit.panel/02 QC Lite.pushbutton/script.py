@@ -30,7 +30,13 @@ from checks_view import run_view_checks
 from collectors import collect_placed_view_ids, collect_sheets, collect_views, to_text
 from config_loader import load_config
 from export_options import request_export_options
-from exporters import export_styled_xlsx, save_full_csv, save_summary_csv
+from compact_summary import save_compact_summary_html
+from exporters import (
+    export_compact_summary_pdf,
+    export_styled_xlsx,
+    save_full_csv,
+    save_summary_csv
+)
 from grouping import (
     build_issue_group_rows,
     build_key_issue_rows,
@@ -40,6 +46,7 @@ from grouping import (
 from report_history import select_latest_report_path, write_latest_report_path
 from report_ui import html_escape, render_quick_report
 from qc_workflow_ui import show_qc_lite_dashboard
+from qc_result_model import build_qc_result_model
 
 
 config = load_config(CONFIG_PATH)
@@ -82,10 +89,16 @@ run_sheet_checks(sheets, issue_rows, config["sheet_qc"])
 run_view_checks(checked_views, placed_view_ids, issue_rows, view_config)
 
 issue_group_rows = build_issue_group_rows(issue_rows)
+compact_issue_group_rows = build_issue_group_rows(
+    issue_rows,
+    shorten_samples=True,
+    sample_max_length=config["display"]["group_sample_max_length"],
+    sample_limit=3
+)
 key_issue_rows = build_key_issue_rows(
     issue_rows,
     view_config["temporary_keywords"],
-    key_issue_limit=config["display"]["key_issue_limit"],
+    key_issue_limit=3,
     item_max_length=config["display"]["key_item_max_length"]
 )
 summary_data = build_summary_data(issue_rows, len(sheets), len(checked_views))
@@ -113,12 +126,32 @@ report_context = {
     ),
     "reports_dir": REPORTS_DIR
 }
+result_model = build_qc_result_model(
+    summary_data,
+    qc_status,
+    compact_issue_group_rows,
+    key_issue_rows,
+    {
+        "project": report_context["project"],
+        "run_mode": report_context["run_mode"],
+        "tool_version": VERSION,
+        "active_config": ACTIVE_CONFIG_DISPLAY,
+        "run_time": run_time,
+        "export_time": export_time,
+        "checked_parameter_elements": 0
+    }
+)
+report_context["result_model"] = result_model
 saved_full_csv_path = u""
 saved_summary_csv_path = u""
 saved_styled_xlsx_path = u""
+saved_compact_html_path = u""
+saved_compact_pdf_path = u""
 full_csv_error = u""
 summary_csv_error = u""
 styled_xlsx_error = u""
+compact_html_error = u""
+compact_pdf_error = u""
 history_error = u""
 
 if selected_export_options["full_csv"]:
@@ -165,10 +198,38 @@ if selected_export_options["styled_xlsx"]:
     except Exception as ex:
         styled_xlsx_error = to_text(ex)
 
+if selected_export_options.get("compact_html", False):
+    try:
+        saved_compact_html_path = save_compact_summary_html(
+            result_model,
+            timestamp,
+            config["export"]["file_prefix"],
+            selected_export_options["folder"]
+        )
+    except Exception as ex:
+        compact_html_error = to_text(ex)
+
+if selected_export_options.get("compact_pdf", False):
+    try:
+        saved_compact_pdf_path, compact_pdf_error = export_compact_summary_pdf(
+            result_model,
+            timestamp,
+            config["export"]["file_prefix"],
+            selected_export_options["folder"],
+            report_context
+        )
+    except Exception as ex:
+        compact_pdf_error = to_text(ex)
+
 latest_report_path = select_latest_report_path(
     saved_styled_xlsx_path,
     saved_summary_csv_path,
     saved_full_csv_path
+)
+latest_report_path = (
+    saved_compact_pdf_path
+    or saved_compact_html_path
+    or latest_report_path
 )
 
 if latest_report_path:
@@ -190,6 +251,10 @@ render_quick_report(
     summary_csv_error,
     saved_styled_xlsx_path,
     styled_xlsx_error,
+    saved_compact_html_path,
+    compact_html_error,
+    saved_compact_pdf_path,
+    compact_pdf_error,
     selected_export_options
 )
 

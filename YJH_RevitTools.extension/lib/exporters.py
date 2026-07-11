@@ -368,25 +368,49 @@ def write_xlsx_summary_sheet(
 ):
     apply_xlsx_title(sheet, u"Revit QC Report", 4, styles)
     sheet.sheet_view.showGridLines = False
+    result_model = report_context.get("result_model", {})
+    kpi = result_model.get("kpi", {})
+    issue_counts = result_model.get("issue_count_by_qc", {})
 
     summary_items = [
         (u"Project", report_context.get("project", u"")),
-        (u"Active Config", report_context.get("active_config", u"")),
         (u"Run Mode", report_context.get("run_mode", u"")),
         (u"QC Status", qc_status),
-        (u"Checked Sheets", summary_data["checked_sheets"]),
-        (u"Checked Views", summary_data["checked_views"]),
         (
-            u"Checked Parameter Elements",
-            report_context.get("checked_parameter_elements", 0)
+            u"Checked Items",
+            kpi.get(
+                "checked_items",
+                summary_data["checked_sheets"] + summary_data["checked_views"]
+            )
         ),
-        (u"Total Review Items", summary_data["total_issues"]),
+        (
+            u"Total Findings",
+            kpi.get("total_findings", summary_data["total_issues"])
+        ),
+        (
+            u"Critical Items",
+            kpi.get("critical_items", summary_data["high_count"])
+        ),
+        (
+            u"Sheet QC",
+            issue_counts.get("sheet_qc", summary_data["sheet_issues"])
+        ),
+        (
+            u"View QC",
+            issue_counts.get("view_qc", summary_data["view_issues"])
+        ),
+        (
+            u"Parameter QC",
+            issue_counts.get(
+                "parameter_qc",
+                summary_data["parameter_issues"]
+            )
+        ),
         (u"Review Groups", report_context.get("review_group_count", 0)),
         (u"High", summary_data["high_count"]),
         (u"Medium", summary_data["medium_count"]),
         (u"Low", summary_data["low_count"]),
         (u"Run Time", report_context.get("run_time", u"")),
-        (u"Export Time", report_context.get("export_time", u"")),
         (u"Tool Version", version),
         (u"Export Folder", export_folder)
     ]
@@ -407,7 +431,7 @@ def write_xlsx_summary_sheet(
         value_cell.border = styles["thin_border"]
         value_cell.alignment = styles["body_alignment"]
 
-        if item[0] in [u"Total Review Items", u"Review Groups"]:
+        if item[0] in [u"Total Findings", u"Critical Items", u"Review Groups"]:
             value_cell.fill = styles["highlight_fill"]
             value_cell.font = styles["highlight_font"]
 
@@ -558,7 +582,7 @@ def _export_styled_xlsx_direct(
 
         workbook = Workbook()
         summary_sheet = workbook.active
-        summary_sheet.title = u"QC Summary"
+        summary_sheet.title = u"SUMMARY"
         write_xlsx_summary_sheet(
             summary_sheet,
             summary_data,
@@ -652,6 +676,7 @@ def build_styled_xlsx_payload(
     export_folder_path = to_text(export_folder)
 
     payload = {
+        "result_model": report_context.get("result_model", {}),
         "summary_data": summary_data,
         "review_groups": build_review_group_xlsx_rows(group_rows),
         "key_samples": build_key_sample_xlsx_rows(
@@ -828,6 +853,40 @@ def find_external_python_with_openpyxl(
             u"{0}: {1}".format(candidate["name"], error_text)
         )
 
+    return None, u"; ".join(probe_errors)
+
+
+def find_external_python_with_reportlab(
+    configured_python_path,
+    debug_lines=None
+):
+    probe_code = (
+        u"import sys, reportlab; "
+        u"sys.stdout.write(sys.executable + '|' + reportlab.Version)"
+    )
+    probe_errors = []
+    for candidate in get_external_python_candidates(configured_python_path):
+        probe_arguments = list(candidate["prefix_arguments"])
+        probe_arguments.extend([u"-c", probe_code])
+        exit_code, standard_output, standard_error = run_external_process(
+            candidate["executable"], probe_arguments, 15000
+        )
+        if debug_lines is not None:
+            debug_lines.append(
+                u"pdf_python_candidate: {0} | exit={1}".format(
+                    candidate["name"],
+                    exit_code
+                )
+            )
+        if exit_code == 0 and standard_output:
+            candidate["probe_output"] = standard_output
+            return candidate, u""
+        probe_errors.append(
+            u"{0}: {1}".format(
+                candidate["name"],
+                standard_error or standard_output or u"not available"
+            )
+        )
     return None, u"; ".join(probe_errors)
 
 
@@ -1147,3 +1206,82 @@ def export_styled_xlsx(
         saved_xlsx_path,
         error_message
     )
+
+
+def export_compact_summary_pdf(
+    result_model,
+    timestamp,
+    file_prefix,
+    export_folder,
+    report_context
+):
+    """공통 result model을 외부 Python helper로 1-page PDF로 출력한다."""
+    extension_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    reports_dir = to_text(report_context.get("reports_dir", u""))
+    if not reports_dir:
+        reports_dir = os.path.join(extension_dir, "reports")
+    helper_path = os.path.join(
+        extension_dir,
+        "tools",
+        "make_compact_summary_pdf.py"
+    )
+    pdf_path = get_export_path(
+        export_folder,
+        file_prefix,
+        u"Compact_Summary",
+        timestamp,
+        u"pdf"
+    )
+    if not os.path.isfile(helper_path):
+        return u"", u"Compact Summary PDF helper not found: {0}".format(helper_path)
+    configured_python_path = report_context.get("external_python_path", u"")
+    python_candidate, probe_error = find_external_python_with_reportlab(
+        configured_python_path
+    )
+    if python_candidate is None:
+        return (
+            u"",
+            u"Compact Summary PDF requires external Python with reportlab. "
+            u"Install reportlab in the configured Python. Probe: {0}".format(
+                probe_error
+            )
+        )
+    temp_dir = os.path.join(reports_dir, "temp")
+    if not os.path.isdir(temp_dir):
+        os.makedirs(temp_dir)
+    json_path = os.path.join(
+        temp_dir,
+        u"compact_summary_{0}_{1}.json".format(
+            timestamp,
+            uuid.uuid4().hex
+        )
+    )
+    try:
+        with io.open(json_path, "w", encoding="utf-8") as json_file:
+            json_file.write(to_text(json.dumps(result_model, ensure_ascii=True)))
+        helper_arguments = list(python_candidate["prefix_arguments"])
+        helper_arguments.extend([helper_path, json_path, pdf_path])
+        exit_code, standard_output, standard_error = run_external_process(
+            python_candidate["executable"],
+            helper_arguments,
+            120000,
+            os.path.dirname(helper_path)
+        )
+        if exit_code != 0:
+            return (
+                u"",
+                u"Compact Summary PDF export failed: {0}".format(
+                    standard_error or standard_output or u"unknown error"
+                )
+            )
+        if not os.path.isfile(pdf_path):
+            return u"", u"PDF helper completed without an output file."
+        return pdf_path, u""
+    except Exception as ex:
+        return u"", u"Compact Summary PDF export failed: {0}".format(to_text(ex))
+    finally:
+        try:
+            if os.path.isfile(json_path):
+                os.remove(json_path)
+        except Exception:
+            pass

@@ -116,7 +116,7 @@ HELP_SECTIONS = [
     (
         u"Report",
         u"Report",
-        u"DOC QC와 QC Lite는 CSV / Styled XLSX를, Scan QC는 전용 PDF Report를 생성합니다.",
+        u"DOC QC와 QC Lite는 CSV / Styled XLSX를 유지하며, QC Lite는 Compact Summary HTML과 선택형 PDF도 생성합니다. Scan QC는 전용 PDF Report를 생성합니다.",
         [
             (u"DOC QC", u"Full CSV는 개별 항목, Summary CSV는 그룹 결과, Styled XLSX는 공유용 보고서입니다."),
             (u"Scan QC", u"A3/A2 전용 Report Sheet에 QC Plan View와 Revision Cloud ID Mapping을 배치합니다."),

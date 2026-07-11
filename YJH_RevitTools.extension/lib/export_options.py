@@ -132,8 +132,8 @@ class ExportOptionsForm(Form):
         Form.__init__(self)
         self.result = None
         self.Text = "Revit QC - Export Options"
-        self.ClientSize = Size(820, 470)
-        self.MinimumSize = Size(780, 450)
+        self.ClientSize = Size(820, 560)
+        self.MinimumSize = Size(780, 540)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -244,8 +244,10 @@ class ExportOptionsForm(Form):
         formats_layout.Margin = Padding(0, 0, 0, 8)
         formats_layout.Padding = Padding(14, 10, 14, 10)
         formats_layout.ColumnCount = 1
-        formats_layout.RowCount = 4
+        formats_layout.RowCount = 6
         formats_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
+        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
         formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
         formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
         formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
@@ -267,6 +269,16 @@ class ExportOptionsForm(Form):
             True
         )
         formats_layout.Controls.Add(self.styled_xlsx_check, 0, 2)
+        self.compact_html_check = self._create_check_box(
+            "Compact Summary HTML",
+            quick_mode
+        )
+        formats_layout.Controls.Add(self.compact_html_check, 0, 3)
+        self.compact_pdf_check = self._create_check_box(
+            "Compact Summary PDF",
+            False
+        )
+        formats_layout.Controls.Add(self.compact_pdf_check, 0, 4)
 
         self.export_note_label = Label()
         self.export_note_label.Dock = DockStyle.Fill
@@ -274,11 +286,13 @@ class ExportOptionsForm(Form):
         self.export_note_label.ForeColor = MUTED_COLOR
         self.export_note_label.Font = get_preferred_font(8.5)
         self.export_note_label.Padding = Padding(26, 2, 0, 0)
-        formats_layout.Controls.Add(self.export_note_label, 0, 3)
+        formats_layout.Controls.Add(self.export_note_label, 0, 5)
 
         self.full_csv_check.CheckedChanged += self._update_export_state
         self.summary_csv_check.CheckedChanged += self._update_export_state
         self.styled_xlsx_check.CheckedChanged += self._update_export_state
+        self.compact_html_check.CheckedChanged += self._update_export_state
+        self.compact_pdf_check.CheckedChanged += self._update_export_state
         self._update_export_state(None, None)
 
         button_layout = FlowLayoutPanel()
@@ -342,6 +356,8 @@ class ExportOptionsForm(Form):
             self.full_csv_check.Checked
             or self.summary_csv_check.Checked
             or self.styled_xlsx_check.Checked
+            or self.compact_html_check.Checked
+            or self.compact_pdf_check.Checked
         )
 
     def _update_export_state(self, sender, event_args):
@@ -412,12 +428,18 @@ class ExportOptionsForm(Form):
             selected_formats.append(u"Summary CSV")
         if self.styled_xlsx_check.Checked:
             selected_formats.append(u"Styled XLSX Report")
+        if self.compact_html_check.Checked:
+            selected_formats.append(u"Compact Summary HTML")
+        if self.compact_pdf_check.Checked:
+            selected_formats.append(u"Compact Summary PDF")
 
         self.result = {
             "folder": folder_path,
             "full_csv": self.full_csv_check.Checked,
             "summary_csv": self.summary_csv_check.Checked,
             "styled_xlsx": self.styled_xlsx_check.Checked,
+            "compact_html": self.compact_html_check.Checked,
+            "compact_pdf": self.compact_pdf_check.Checked,
             "selected_formats": selected_formats,
             "folder_history_error": u""
         }

@@ -359,6 +359,9 @@ def apply_block_style(
 def write_summary_sheet(sheet, payload, styles):
     summary_data = payload.get("summary_data", {})
     metadata = payload.get("metadata", {})
+    result_model = payload.get("result_model", {})
+    kpi = result_model.get("kpi", {})
+    issue_counts = result_model.get("issue_count_by_qc", {})
     generated_at = metadata.get("export_time", "") or metadata.get(
         "run_time",
         ""
@@ -366,7 +369,7 @@ def write_summary_sheet(sheet, payload, styles):
 
     sheet.merge_cells("A1:H2")
     title_cell = sheet["A1"]
-    title_cell.value = "Revit QC Report"
+    title_cell.value = "Revit QC Report Summary"
     title_cell.font = styles["summary_title_font"]
     title_cell.fill = styles["title_fill"]
     title_cell.border = styles["title_border"]
@@ -390,16 +393,10 @@ def write_summary_sheet(sheet, payload, styles):
     sheet.row_dimensions[4].height = 2
 
     kpi_items = [
-        ("Checked Sheets", summary_data.get("checked_sheets", 0), 1, 2, False),
-        ("Checked Views", summary_data.get("checked_views", 0), 3, 4, False),
-        (
-            "Parameter Elements",
-            metadata.get("checked_parameter_elements", 0),
-            5,
-            6,
-            False
-        ),
-        ("Review Items", summary_data.get("total_issues", 0), 7, 8, True)
+        ("Checked Items", kpi.get("checked_items", summary_data.get("checked_sheets", 0) + summary_data.get("checked_views", 0)), 1, 2, False),
+        ("Total Findings", kpi.get("total_findings", summary_data.get("total_issues", 0)), 3, 4, True),
+        ("Critical Items", kpi.get("critical_items", summary_data.get("high_count", 0)), 5, 6, True),
+        ("Review Groups", result_model.get("review_group_count", metadata.get("review_group_count", 0)), 7, 8, False)
     ]
     for label, value, start_column, end_column, is_warning in kpi_items:
         if start_column != end_column:
@@ -437,7 +434,7 @@ def write_summary_sheet(sheet, payload, styles):
         value_cell.number_format = "#,##0"
 
     sheet.merge_cells("A9:H9")
-    sheet["A9"] = "STATUS & SEVERITY"
+    sheet["A9"] = "STATUS & ISSUE COUNT BY QC"
     sheet["A9"].font = styles["section_font"]
     sheet["A9"].fill = styles["summary_label_fill"]
     sheet["A9"].border = styles["thin_border"]
@@ -446,30 +443,36 @@ def write_summary_sheet(sheet, payload, styles):
     status_items = [
         (
             "QC Status",
-            metadata.get("qc_status", ""),
+            result_model.get("qc_status", metadata.get("qc_status", "")),
             "warning_fill",
             False,
             1,
             2
         ),
         (
-            "Review Groups",
-            metadata.get("review_group_count", 0),
+            "Sheet QC",
+            issue_counts.get("sheet_qc", summary_data.get("sheet_issues", 0)),
             "white_fill",
             True,
             3,
             4
         ),
-        ("High", summary_data.get("high_count", 0), "high_fill", True, 5, 5),
         (
-            "Medium",
-            summary_data.get("medium_count", 0),
-            "medium_fill",
+            "View QC",
+            issue_counts.get("view_qc", summary_data.get("view_issues", 0)),
+            "white_fill",
             True,
-            6,
-            7
+            5,
+            6
         ),
-        ("Low", summary_data.get("low_count", 0), "low_fill", True, 8, 8)
+        (
+            "Parameter QC",
+            issue_counts.get("parameter_qc", summary_data.get("parameter_issues", 0)),
+            "white_fill",
+            True,
+            7,
+            8
+        ),
     ]
     for item in status_items:
         start_column = item[4]
@@ -617,7 +620,7 @@ def create_workbook(payload):
         color=TEXT_NAVY
     )
     summary_sheet = workbook.active
-    summary_sheet.title = "QC Summary"
+    summary_sheet.title = "SUMMARY"
     write_summary_sheet(summary_sheet, payload, styles)
 
     review_groups_sheet = workbook.create_sheet("Review Groups")

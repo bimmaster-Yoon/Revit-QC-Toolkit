@@ -170,6 +170,10 @@ def render_quick_report(
     summary_csv_error,
     saved_styled_xlsx_path,
     styled_xlsx_error,
+    saved_compact_html_path,
+    compact_html_error,
+    saved_compact_pdf_path,
+    compact_pdf_error,
     export_options
 ):
     """Sheet + View QC Lite용 간결한 Summary를 출력한다."""
@@ -279,7 +283,11 @@ def render_quick_report(
         saved_summary_csv_path,
         summary_csv_error,
         saved_styled_xlsx_path,
-        styled_xlsx_error
+        styled_xlsx_error,
+        saved_compact_html_path,
+        compact_html_error,
+        saved_compact_pdf_path,
+        compact_pdf_error
     )
 
 
@@ -291,7 +299,11 @@ def render_export_results(
     saved_summary_csv_path,
     summary_csv_error,
     saved_styled_xlsx_path,
-    styled_xlsx_error
+    styled_xlsx_error,
+    saved_compact_html_path=u"",
+    compact_html_error=u"",
+    saved_compact_pdf_path=u"",
+    compact_pdf_error=u""
 ):
     if not export_options["selected_formats"]:
         output.print_html(
@@ -322,6 +334,16 @@ def render_export_results(
         styled_xlsx_error,
         export_options["styled_xlsx"]
     )
+    compact_html_result = _get_export_result(
+        saved_compact_html_path,
+        compact_html_error,
+        export_options.get("compact_html", False)
+    )
+    compact_pdf_result = _get_export_result(
+        saved_compact_pdf_path,
+        compact_pdf_error,
+        export_options.get("compact_pdf", False)
+    )
 
     output.print_html(
         u"""
@@ -334,6 +356,8 @@ def render_export_results(
             <strong>Full CSV:</strong> {2}<br>
             <strong>Summary CSV:</strong> {3}<br>
             <strong>Styled XLSX Report:</strong> {4}<br>
+            <strong>Compact Summary HTML:</strong> {5}<br>
+            <strong>Compact Summary PDF:</strong> {6}<br>
             <span style="color:#5F6F7D;">
                 Export 실패가 발생해도 QC 검사는 완료됩니다.
             </span>
@@ -343,7 +367,9 @@ def render_export_results(
             html_escape(u" / ".join(export_options["selected_formats"])),
             full_csv_result,
             summary_csv_result,
-            styled_xlsx_result
+            styled_xlsx_result,
+            compact_html_result,
+            compact_pdf_result
         )
     )
 
