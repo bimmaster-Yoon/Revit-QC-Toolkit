@@ -17,6 +17,7 @@ LIGHT_FILL_COLOR = Color.FromArgb(244, 246, 248)
 HELP_BACKGROUND_COLOR = Color.FromArgb(248, 249, 250)
 WARNING_BACKGROUND_COLOR = Color.FromArgb(255, 241, 230)
 ORANGE_COLOR = Color.FromArgb(222, 113, 47)
+ORANGE_HOVER_COLOR = Color.FromArgb(242, 140, 40)
 
 OUTER_MARGIN = 24
 HEADER_TOP_PADDING = 22
@@ -78,6 +79,55 @@ def apply_primary_button_style(button):
     button.BackColor = BUTTON_NAVY_COLOR
     button.ForeColor = Color.White
     button.UseVisualStyleBackColor = False
+
+
+def attach_border_hover(
+    button,
+    restore_callback=None,
+    enter_callback=None
+):
+    """Attach border-only hover handlers and return a cleanup token."""
+    base_back_color = button.BackColor
+    base_fore_color = button.ForeColor
+    base_border_color = button.FlatAppearance.BorderColor
+    base_border_size = button.FlatAppearance.BorderSize
+    base_mouse_over_color = button.FlatAppearance.MouseOverBackColor
+
+    def mouse_enter(sender, event_args):
+        if not sender.Enabled:
+            return
+        sender.FlatAppearance.BorderColor = ORANGE_HOVER_COLOR
+        sender.FlatAppearance.BorderSize = 1
+        sender.FlatAppearance.MouseOverBackColor = sender.BackColor
+        if enter_callback is not None:
+            enter_callback(sender)
+        sender.Invalidate()
+
+    def mouse_leave(sender, event_args):
+        if restore_callback is not None:
+            restore_callback(sender)
+        else:
+            sender.BackColor = base_back_color
+            sender.ForeColor = base_fore_color
+            sender.FlatAppearance.BorderColor = base_border_color
+            sender.FlatAppearance.BorderSize = base_border_size
+            sender.FlatAppearance.MouseOverBackColor = base_mouse_over_color
+        sender.Invalidate()
+
+    button.MouseEnter += mouse_enter
+    button.MouseLeave += mouse_leave
+    return (button, mouse_enter, mouse_leave)
+
+
+def detach_border_hover(binding):
+    if not binding:
+        return
+    button, mouse_enter, mouse_leave = binding
+    try:
+        button.MouseEnter -= mouse_enter
+        button.MouseLeave -= mouse_leave
+    except Exception:
+        pass
 
 
 def configure_tooltip(tool_tip):

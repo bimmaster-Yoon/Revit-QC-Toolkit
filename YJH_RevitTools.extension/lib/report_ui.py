@@ -176,7 +176,7 @@ def render_quick_report(
     compact_pdf_error,
     export_options
 ):
-    """Sheet + View + Parameter QC Lite Summary를 출력한다."""
+    """사용자가 요청한 경우에만 QC Lite 상세 Output을 렌더링한다."""
     apply_portfolio_output_style(output)
 
     compact_summary_rows = [
@@ -191,94 +191,8 @@ def render_quick_report(
             u" / ".join(export_options["selected_formats"]) or u"None"
         ]
     ]
-
-    output.print_html(
-        u"""
-        <div style="font-family:Segoe UI, Arial, sans-serif; color:#263645;">
-            <h2 style="margin-bottom:3px;">QC Lite Dashboard</h2>
-            <div style="color:#5F6F7D; margin-bottom:14px;">{0}</div>
-            <div style="margin-bottom:14px; white-space:nowrap;">
-                <div style="display:inline-block; vertical-align:top; width:21%;
-                    margin-right:8px; padding:12px; background:#F4F6F8;
-                    border:1px solid #D6DDE3; border-top:3px solid #DE712F;">
-                    <b>SHEET QC</b><br><span style="font-size:24px;">{1}</span><br>
-                    <span style="color:#5F6F7D;">{2} sheets checked</span>
-                </div>
-                <div style="display:inline-block; vertical-align:top; width:21%;
-                    margin-right:8px; padding:12px; background:#F4F6F8;
-                    border:1px solid #D6DDE3; border-top:3px solid #DE712F;">
-                    <b>VIEW QC</b><br><span style="font-size:24px;">{3}</span><br>
-                    <span style="color:#5F6F7D;">{4} views checked</span>
-                </div>
-                <div style="display:inline-block; vertical-align:top; width:21%;
-                    margin-right:8px; padding:12px; background:#F4F6F8;
-                    border:1px solid #D6DDE3;">
-                    <b>PARAMETER QC</b><br><span style="font-size:24px;">{5}</span><br>
-                    <span style="color:#5F6F7D;">Included in Quick QC</span>
-                </div>
-                <div style="display:inline-block; vertical-align:top; width:21%;
-                    padding:12px; background:#F4F6F8;
-                    border:1px solid #D6DDE3;">
-                    <b>SCAN QC</b><br><span style="font-size:24px;">N/A</span><br>
-                    <span style="color:#5F6F7D;">Run Scan QC</span>
-                </div>
-            </div>
-            <div style="padding:10px 12px; background:#FFF1E6;
-                border:1px solid #E8C8B0; margin-bottom:12px;">
-                <b>ISSUE COUNT: {6}</b> &nbsp; | &nbsp; STATUS: {7}
-            </div>
-        </div>
-        """.format(
-            html_escape(version),
-            summary_data["sheet_issues"],
-            summary_data["checked_sheets"],
-            summary_data["view_issues"],
-            summary_data["checked_views"],
-            summary_data["parameter_issues"],
-            summary_data["total_issues"],
-            html_escape(qc_status)
-        )
-    )
-
-    output.print_html_table(
-        table_data=compact_summary_rows,
-        title="QC Lite Compact Summary",
-        columns=["Summary", "Value"],
-        column_widths=["260px", "220px"],
-        table_width_style="width:500px",
-        row_striping=True
-    )
-
-    if key_issue_rows:
-        output.print_html_table(
-            table_data=key_issue_rows,
-            title="Top Issues",
-            columns=[
-                "Category",
-                "Item Type",
-                "Item Name",
-                "Severity",
-                "QC Item",
-                "Issue Message"
-            ],
-            column_widths=["100px", "140px", "260px", "80px", "160px", "220px"],
-            table_width_style="width:100%",
-            row_striping=True
-        )
-
-    output.print_html(
-        u"""
-        <div style="margin-top:12px; padding:10px; color:#5F6F7D;
-            border-left:3px solid #DE712F; background:#F8F9FA;">
-            <b>Next Actions</b><br>
-            전체 Parameter 검토는 <b>DOC QC</b>, 저장된 결과 확인은
-            <b>Report</b> 버튼을 사용하세요.
-        </div>
-        """
-    )
-
-    render_export_results(
-        output,
+    top_issue_rows = key_issue_rows[:5]
+    export_html = _build_export_results_html(
         export_options,
         saved_full_csv_path,
         full_csv_error,
@@ -291,6 +205,163 @@ def render_quick_report(
         saved_compact_pdf_path,
         compact_pdf_error
     )
+    top_issues_html = (
+        _build_output_table(
+            [u"Severity", u"Category", u"Item", u"QC Item"],
+            [[row[3], row[0], row[2], row[4]] for row in top_issue_rows]
+        )
+        if top_issue_rows
+        else u"<div class='qc-empty'>표시할 주요 Issue가 없습니다.</div>"
+    )
+    detailed_html = (
+        _build_output_table(
+            [
+                u"Category", u"Item Type", u"Item Name",
+                u"Severity", u"QC Item", u"Issue Message"
+            ],
+            key_issue_rows
+        )
+        if key_issue_rows
+        else u"<div class='qc-empty'>상세 표시 대상이 없습니다.</div>"
+    )
+
+    output.print_html(
+        u"""
+        <div class="qc-lite-details">
+            <style>
+                .qc-lite-details {{font-family:Segoe UI, Arial, sans-serif;
+                    color:#263645; max-width:1200px;}}
+                .qc-lite-details h2 {{margin:0 0 3px 0;}}
+                .qc-version {{color:#5F6F7D; margin-bottom:14px;}}
+                .qc-section {{margin:0 0 10px 0; border:1px solid #D6DDE3;
+                    background:#FFFFFF;}}
+                .qc-section summary {{cursor:pointer; padding:10px 12px;
+                    font-weight:600; background:#F4F6F8;
+                    border-left:3px solid #DE712F;}}
+                .qc-section-body {{padding:10px 12px 12px 12px;}}
+                .qc-output-table {{width:100%; border-collapse:collapse;
+                    table-layout:fixed;}}
+                .qc-output-table th, .qc-output-table td {{padding:7px 8px;
+                    border-bottom:1px solid #E2E7EB; text-align:left;
+                    overflow-wrap:anywhere;}}
+                .qc-output-table th {{background:#536777; color:#FFFFFF;}}
+                .qc-output-table tr:nth-child(even) td {{background:#F7F9FB;}}
+                .qc-empty {{padding:8px; color:#5F6F7D;}}
+                .qc-next {{margin-top:12px; padding:10px 12px; color:#5F6F7D;
+                    border-left:3px solid #DE712F; background:#F8F9FA;}}
+            </style>
+            <h2>QC Lite Detailed Report</h2>
+            <div class="qc-version">{0}</div>
+            <details class="qc-section" open>
+                <summary>Compact Summary</summary>
+                <div class="qc-section-body">{1}</div>
+            </details>
+            <details class="qc-section" open>
+                <summary>Top Issues</summary>
+                <div class="qc-section-body">{2}</div>
+            </details>
+            <details class="qc-section">
+                <summary>Detailed QC Results</summary>
+                <div class="qc-section-body">{3}</div>
+            </details>
+            <details class="qc-section">
+                <summary>Export Results</summary>
+                <div class="qc-section-body">{4}</div>
+            </details>
+            <div class="qc-next"><b>Next Actions</b><br>
+                전체 검토는 <b>DOC QC</b>, 저장된 결과 확인은
+                <b>Report</b> 버튼을 사용하세요.
+            </div>
+        </div>
+        """.format(
+            html_escape(version),
+            _build_output_table([u"Summary", u"Value"], compact_summary_rows),
+            top_issues_html,
+            detailed_html,
+            export_html
+        )
+    )
+
+
+def _build_output_table(columns, rows):
+    header_cells = u"".join(
+        [u"<th>{0}</th>".format(html_escape(column)) for column in columns]
+    )
+    body_rows = []
+    for row in rows:
+        cells = u"".join(
+            [u"<td>{0}</td>".format(html_escape(value)) for value in row]
+        )
+        body_rows.append(u"<tr>{0}</tr>".format(cells))
+    return u"<table class='qc-output-table'><thead><tr>{0}</tr></thead>" \
+        u"<tbody>{1}</tbody></table>".format(
+            header_cells,
+            u"".join(body_rows)
+        )
+
+
+def _build_export_results_html(
+    export_options,
+    saved_full_csv_path,
+    full_csv_error,
+    saved_summary_csv_path,
+    summary_csv_error,
+    saved_styled_xlsx_path,
+    styled_xlsx_error,
+    saved_compact_html_path,
+    compact_html_error,
+    saved_compact_pdf_path,
+    compact_pdf_error
+):
+    if not export_options["selected_formats"]:
+        return u"<div class='qc-empty'>선택한 파일 출력 형식이 없습니다.</div>"
+
+    rows = [
+        [u"Folder", export_options["folder"]],
+        [u"Selected", u" / ".join(export_options["selected_formats"])],
+        [u"Full CSV", _get_export_result(
+            saved_full_csv_path, full_csv_error, export_options["full_csv"]
+        )],
+        [u"Summary CSV", _get_export_result(
+            saved_summary_csv_path,
+            summary_csv_error,
+            export_options["summary_csv"]
+        )],
+        [u"Styled XLSX Report", _get_export_result(
+            saved_styled_xlsx_path,
+            styled_xlsx_error,
+            export_options["styled_xlsx"]
+        )],
+        [u"Compact Summary HTML", _get_export_result(
+            saved_compact_html_path,
+            compact_html_error,
+            export_options.get("compact_html", False)
+        )],
+        [u"Compact Summary PDF", _get_export_result(
+            saved_compact_pdf_path,
+            compact_pdf_error,
+            export_options.get("compact_pdf", False)
+        )]
+    ]
+    safe_rows = []
+    for label, value in rows:
+        if label in [u"Folder", u"Selected"]:
+            safe_rows.append([label, value])
+        else:
+            safe_rows.append([label, _strip_preescaped_value(value)])
+    result = _build_output_table([u"Export", u"Result"], safe_rows)
+    if export_options.get("folder_history_error"):
+        result += u"<div style='color:#C85F1A; padding-top:8px;'>" \
+            u"마지막 저장 폴더 기록 실패: {0}</div>".format(
+                html_escape(export_options["folder_history_error"])
+            )
+    return result
+
+
+def _strip_preescaped_value(value):
+    return to_text(value).replace(u"&amp;", u"&").replace(
+        u"&lt;", u"<"
+    ).replace(u"&gt;", u">").replace(u"&quot;", u'"')
 
 
 def render_export_results(

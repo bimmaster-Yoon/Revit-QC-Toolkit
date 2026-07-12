@@ -33,7 +33,8 @@ if LIB_DIR not in sys.path:
 
 from qc_ui_style import (
     BORDER_COLOR, HELP_BACKGROUND_COLOR, NAVY_COLOR, ORANGE_COLOR,
-    WARNING_BACKGROUND_COLOR, apply_primary_button_style, get_preferred_font
+    ORANGE_HOVER_COLOR, WARNING_BACKGROUND_COLOR,
+    attach_border_hover, detach_border_hover, get_preferred_font
 )
 from toolkit_version import get_toolkit_version_label
 from ui_close_profiler import (
@@ -55,15 +56,11 @@ DETAIL_PADDING = 24
 CARD_GAP = 12
 CARD_PADDING_HORIZONTAL = 18
 CARD_PADDING_VERTICAL = 14
-FOOTER_HEIGHT = 64
-CLOSE_BUTTON_WIDTH = 128
-CLOSE_BUTTON_HEIGHT = 40
-FOOTER_RIGHT_MARGIN = 24
-FOOTER_BOTTOM_MARGIN = 14
 SCROLLBAR_WIDTH = 10
 SCROLL_TRACK_INSET = 2
 SCROLL_THUMB_MIN_HEIGHT = 36
 DETAIL_BOTTOM_PADDING = 20
+FOOTER_HEIGHT = 64
 
 HOVER_COLOR = Color.FromArgb(247, 249, 251)
 CARD_FILL_COLOR = Color.FromArgb(247, 249, 251)
@@ -73,6 +70,7 @@ OVERVIEW_ACCENT_COLOR = Color.FromArgb(232, 117, 22)
 SCROLL_TRACK_COLOR = Color.FromArgb(238, 241, 244)
 SCROLL_THUMB_COLOR = Color.FromArgb(242, 140, 40)
 SCROLL_THUMB_HOVER_COLOR = Color.FromArgb(220, 118, 23)
+SELECTED_NAVIGATION_COLOR = Color.FromArgb(255, 244, 234)
 
 HELP_PROFILE_LOG_PATH = os.path.join(
     os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
@@ -649,6 +647,7 @@ class HelpForm(Form):
         self.MaximizeBox = True
         self.MinimizeBox = False
         self.ShowInTaskbar = False
+        self.KeyPreview = True
         self.AutoScaleMode = AutoScaleMode.Dpi
         self.BackColor = Color.White
         self.ForeColor = NAVY_COLOR
@@ -662,9 +661,11 @@ class HelpForm(Form):
         self.page_subtitle_font = get_preferred_font(9.5, FontStyle.Regular)
         self.card_heading_font = get_preferred_font(10.5, FontStyle.Bold)
         self.card_body_font = get_preferred_font(9.5, FontStyle.Regular)
-        self.close_button_font = get_preferred_font(9.5, FontStyle.Regular)
+        self.nav_accent_brush = SolidBrush(ORANGE_HOVER_COLOR)
 
         self.nav_items = []
+        self._nav_hover_bindings = []
+        self._navigation_hovered = set()
         self.page_cache = {}
         self.page_metadata = {}
         self.current_page = None
@@ -676,6 +677,7 @@ class HelpForm(Form):
         self._build_layout()
         self._show_section(0)
         self.Shown += self._on_shown
+        self.KeyDown += self._form_key_down
         self.ResumeLayout(True)
 
     def _build_layout(self):
@@ -753,8 +755,15 @@ class HelpForm(Form):
         self.detail_scrollbar.Visible = False
         detail_region.Controls.Add(self.detail_scrollbar, 1, 0)
 
-        footer = self._build_footer()
-        root.Controls.Add(footer, 0, 2)
+        # Preserve the original Detail viewport height without restoring the
+        # removed Close button or its event handler.
+        self.footer_spacer = Panel()
+        self.footer_spacer.Dock = DockStyle.Fill
+        self.footer_spacer.Margin = Padding(0)
+        self.footer_spacer.Padding = Padding(0)
+        self.footer_spacer.BackColor = Color.White
+        root.Controls.Add(self.footer_spacer, 0, 2)
+
 
     def _build_header(self):
         header = TableLayoutPanel()
@@ -809,26 +818,8 @@ class HelpForm(Form):
         container.Height = NAVIGATION_BUTTON_HEIGHT
         container.AutoSize = False
         container.Margin = Padding(0, 0, 0, NAVIGATION_BUTTON_GAP)
-        container.Padding = Padding(1)
-        container.BackColor = BORDER_COLOR
-
-        content = TableLayoutPanel()
-        content.Dock = DockStyle.Fill
-        content.Margin = Padding(0)
-        content.Padding = Padding(0)
-        content.BackColor = Color.White
-        content.ColumnCount = 2
-        content.RowCount = 1
-        content.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 4.0))
-        content.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        content.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        container.Controls.Add(content)
-
-        accent = Panel()
-        accent.Dock = DockStyle.Fill
-        accent.Margin = Padding(0)
-        accent.BackColor = Color.White
-        content.Controls.Add(accent, 0, 0)
+        container.Padding = Padding(0)
+        container.BackColor = Color.White
 
         button = Button()
         button.Text = text
@@ -836,11 +827,12 @@ class HelpForm(Form):
         button.UseMnemonic = False
         button.Dock = DockStyle.Fill
         button.Margin = Padding(0)
-        button.Padding = Padding(16, 0, 8, 0)
+        button.Padding = Padding(20, 0, 8, 0)
         button.Tag = index
         button.FlatStyle = FlatStyle.Flat
-        button.FlatAppearance.BorderSize = 0
-        button.FlatAppearance.MouseOverBackColor = HOVER_COLOR
+        button.FlatAppearance.BorderSize = 1
+        button.FlatAppearance.BorderColor = BORDER_COLOR
+        button.FlatAppearance.MouseOverBackColor = Color.White
         button.FlatAppearance.MouseDownBackColor = WARNING_BACKGROUND_COLOR
         button.UseVisualStyleBackColor = False
         button.BackColor = Color.White
@@ -848,42 +840,20 @@ class HelpForm(Form):
         button.Font = self.nav_font_regular
         button.TextAlign = ContentAlignment.MiddleLeft
         button.Click += self._navigation_click
-        button.MouseEnter += self._navigation_mouse_enter
-        button.MouseLeave += self._navigation_mouse_leave
-        content.Controls.Add(button, 1, 0)
+        button.Paint += self._navigation_button_paint
+        self._nav_hover_bindings.append(
+            attach_border_hover(
+                button,
+                self._navigation_hover_restore,
+                self._navigation_hover_enter
+            )
+        )
+        container.Controls.Add(button)
         return {
             "container": container,
-            "content": content,
-            "accent": accent,
             "button": button,
             "index": index
         }
-
-    def _build_footer(self):
-        footer_panel = Panel()
-        footer_panel.Dock = DockStyle.Fill
-        footer_panel.AutoSize = False
-        footer_panel.Margin = Padding(0)
-        footer_panel.Padding = Padding(
-            0,
-            10,
-            FOOTER_RIGHT_MARGIN,
-            FOOTER_BOTTOM_MARGIN
-        )
-
-        close = Button()
-        close.Text = u"Close"
-        close.AutoSize = False
-        close.Dock = DockStyle.Right
-        close.Size = Size(CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT)
-        close.Margin = Padding(0)
-        close.Font = self.close_button_font
-        apply_primary_button_style(close)
-        close.Click += self._close
-        footer_panel.Controls.Add(close)
-        self.close_button = close
-        self.CancelButton = close
-        return footer_panel
 
     def _navigation_click(self, sender, event_args):
         index = int(sender.Tag)
@@ -910,23 +880,46 @@ class HelpForm(Form):
                 metrics
             )
 
-    def _navigation_mouse_enter(self, sender, event_args):
+    def _navigation_hover_enter(self, sender):
         index = int(sender.Tag)
-        if index == self.selected_index:
-            return
-        item = self.nav_items[index]
-        item["content"].BackColor = HOVER_COLOR
-        sender.BackColor = HOVER_COLOR
-        sender.Invalidate()
+        self._navigation_hovered.add(index)
+        selected = index == self.selected_index
+        sender.BackColor = (
+            SELECTED_NAVIGATION_COLOR if selected else Color.White
+        )
+        sender.ForeColor = NAVY_COLOR
+        sender.FlatAppearance.BorderColor = (
+            ORANGE_COLOR if selected else ORANGE_HOVER_COLOR
+        )
+        sender.FlatAppearance.BorderSize = 1
 
-    def _navigation_mouse_leave(self, sender, event_args):
+    def _navigation_hover_restore(self, sender):
         index = int(sender.Tag)
-        if index == self.selected_index:
+        self._navigation_hovered.discard(index)
+        selected = index == self.selected_index
+        background = SELECTED_NAVIGATION_COLOR if selected else Color.White
+        border = ORANGE_HOVER_COLOR if selected else BORDER_COLOR
+        sender.BackColor = background
+        sender.ForeColor = NAVY_COLOR
+        sender.FlatAppearance.BorderColor = border
+        sender.FlatAppearance.BorderSize = 1
+        sender.FlatAppearance.MouseOverBackColor = background
+        sender.Font = self.nav_font_bold if selected else self.nav_font_regular
+
+    def _navigation_button_paint(self, sender, event_args):
+        index = int(sender.Tag)
+        if index != self.selected_index and index not in self._navigation_hovered:
             return
-        item = self.nav_items[index]
-        item["content"].BackColor = Color.White
-        sender.BackColor = Color.White
-        sender.Invalidate()
+        accent_height = max(0, sender.ClientSize.Height - 2)
+        if accent_height <= 0:
+            return
+        event_args.Graphics.FillRectangle(
+            self.nav_accent_brush,
+            1,
+            1,
+            4,
+            accent_height
+        )
 
     def _show_section(self, index, metrics=None):
         if index < 0 or index >= len(HELP_SECTIONS):
@@ -936,6 +929,7 @@ class HelpForm(Form):
                 metrics["cache_hit"] = True
             return metrics
 
+        self.selected_index = index
         self._update_navigation_state(index)
 
         page = self.page_cache.get(index)
@@ -957,7 +951,6 @@ class HelpForm(Form):
         page.Top = 0
         self.detail_scrollbar.set_value(0)
         self.current_page = page
-        self.selected_index = index
         self._resize_page(index)
         if switch_watch is not None:
             switch_watch.Stop()
@@ -985,14 +978,15 @@ class HelpForm(Form):
     def _update_navigation_state(self, selected_index):
         for item in self.nav_items:
             selected = item["index"] == selected_index
-            background = WARNING_BACKGROUND_COLOR if selected else Color.White
-            item["container"].BackColor = (
-                ORANGE_COLOR if selected else BORDER_COLOR
-            )
-            item["content"].BackColor = background
-            item["accent"].BackColor = ORANGE_COLOR if selected else background
+            background = SELECTED_NAVIGATION_COLOR if selected else Color.White
+            item["container"].BackColor = Color.White
             item["button"].BackColor = background
             item["button"].ForeColor = NAVY_COLOR
+            item["button"].FlatAppearance.BorderSize = 1
+            item["button"].FlatAppearance.BorderColor = (
+                ORANGE_HOVER_COLOR if selected else BORDER_COLOR
+            )
+            item["button"].FlatAppearance.MouseOverBackColor = background
             item["button"].Font = (
                 self.nav_font_bold if selected else self.nav_font_regular
             )
@@ -1321,6 +1315,10 @@ class HelpForm(Form):
         except Exception:
             pass
         try:
+            self.KeyDown -= self._form_key_down
+        except Exception:
+            pass
+        try:
             self.detail_host.SizeChanged -= self._resize_pages
             self.detail_host.MouseWheel -= self._detail_mouse_wheel
             self.detail_host.MouseEnter -= self._detail_mouse_enter
@@ -1335,14 +1333,13 @@ class HelpForm(Form):
             button = item["button"]
             try:
                 button.Click -= self._navigation_click
-                button.MouseEnter -= self._navigation_mouse_enter
-                button.MouseLeave -= self._navigation_mouse_leave
+                button.Paint -= self._navigation_button_paint
             except Exception:
                 pass
-        try:
-            self.close_button.Click -= self._close
-        except Exception:
-            pass
+        for binding in self._nav_hover_bindings:
+            detach_border_hover(binding)
+        self._nav_hover_bindings = []
+        self._navigation_hovered = set()
         for page in self.page_cache.values():
             try:
                 page.Dispose()
@@ -1358,15 +1355,22 @@ class HelpForm(Form):
             self.page_title_font,
             self.page_subtitle_font,
             self.card_heading_font,
-            self.card_body_font,
-            self.close_button_font
+            self.card_body_font
         ):
             try:
                 font.Dispose()
             except Exception:
                 pass
+        try:
+            self.nav_accent_brush.Dispose()
+        except Exception:
+            pass
 
-    def _close(self, sender, event_args):
+    def _form_key_down(self, sender, event_args):
+        if event_args.KeyCode != Keys.Escape:
+            return
+        event_args.Handled = True
+        event_args.SuppressKeyPress = True
         self.Close()
 
 

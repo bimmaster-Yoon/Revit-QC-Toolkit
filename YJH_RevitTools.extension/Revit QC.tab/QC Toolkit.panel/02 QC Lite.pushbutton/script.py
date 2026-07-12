@@ -2,6 +2,7 @@
 
 # Quick read-only QC summary: Sheet + View + Parameter. No Transaction.
 
+import io
 import os
 import sys
 
@@ -53,8 +54,11 @@ from grouping import (
 )
 from report_history import select_latest_report_path, write_latest_report_path
 from report_ui import html_escape, render_quick_report
+import qc_lite_dashboard
 from qc_workflow_ui import show_qc_lite_dashboard
 from qc_result_model import build_qc_result_model
+from toolkit_version import get_toolkit_version_label
+from ui_close_profiler import is_ui_perf_debug_enabled
 
 
 config = load_config(CONFIG_PATH)
@@ -75,16 +79,6 @@ selected_export_options = request_export_options(REPORTS_DIR, quick_mode=True)
 
 if selected_export_options is None:
     script.exit()
-
-output = script.get_output()
-output.set_title("Revit QC Lite {0}".format(VERSION))
-if CONFIG_META.get("warning", u""):
-    output.print_html(
-        u"<div style='padding:8px; background:#FFF1E6; color:#263645;'>"
-        u"QC Preset warning: {0}</div>".format(
-            html_escape(CONFIG_META["warning"])
-        )
-    )
 
 run_time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
 view_config = config["view_qc"]
@@ -274,36 +268,91 @@ if latest_report_path:
     except Exception as ex:
         history_error = to_text(ex)
 
-render_quick_report(
-    output,
-    VERSION,
-    summary_data,
-    qc_status,
-    len(issue_group_rows),
-    key_issue_rows,
-    saved_full_csv_path,
-    full_csv_error,
-    saved_summary_csv_path,
-    summary_csv_error,
-    saved_styled_xlsx_path,
-    styled_xlsx_error,
-    saved_compact_html_path,
-    compact_html_error,
-    saved_compact_pdf_path,
-    compact_pdf_error,
-    selected_export_options
-)
+output_state = {"output": None, "rendered": False}
 
-if history_error:
-    output.print_html(
-        u"<div style='color:#b71c1c;'>마지막 리포트 경로 저장 실패: {0}</div>".format(
-            html_escape(history_error)
-        )
+
+def show_detailed_output():
+    existing_output = output_state.get("output")
+    if output_state.get("rendered", False):
+        if existing_output is not None:
+            try:
+                existing_output.show()
+            except Exception:
+                pass
+        return
+
+    output = script.get_output()
+    output_state["output"] = output
+    output.set_title(
+        "Revit QC Lite Details {0}".format(get_toolkit_version_label())
     )
+    if CONFIG_META.get("warning", u""):
+        output.print_html(
+            u"<div style='padding:8px; background:#FFF1E6; color:#263645;'>"
+            u"QC Preset warning: {0}</div>".format(
+                html_escape(CONFIG_META["warning"])
+            )
+        )
+    render_quick_report(
+        output,
+        get_toolkit_version_label(),
+        summary_data,
+        qc_status,
+        len(issue_group_rows),
+        key_issue_rows,
+        saved_full_csv_path,
+        full_csv_error,
+        saved_summary_csv_path,
+        summary_csv_error,
+        saved_styled_xlsx_path,
+        styled_xlsx_error,
+        saved_compact_html_path,
+        compact_html_error,
+        saved_compact_pdf_path,
+        compact_pdf_error,
+        selected_export_options
+    )
+    if history_error:
+        output.print_html(
+            u"<div style='color:#b71c1c;'>마지막 리포트 경로 저장 실패: "
+            u"{0}</div>".format(html_escape(history_error))
+        )
+    output_state["rendered"] = True
+
+
+dashboard_diagnostic_log_path = None
+if is_ui_perf_debug_enabled():
+    dashboard_diagnostic_log_path = os.path.join(
+        REPORTS_DIR,
+        "qc_lite_dashboard_runtime.log"
+    )
+    try:
+        if not os.path.isdir(REPORTS_DIR):
+            os.makedirs(REPORTS_DIR)
+        with io.open(
+            dashboard_diagnostic_log_path,
+            "a",
+            encoding="utf-8"
+        ) as runtime_log:
+            runtime_log.write(
+                u"[{0}] module={1};class={2};call={3};styled_xlsx={4};"
+                u"build={5}\n".format(
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    getattr(qc_lite_dashboard, "__file__", u"N/A"),
+                    qc_lite_dashboard.QcLiteDashboardForm.__name__,
+                    u"show_qc_lite_dashboard",
+                    selected_export_options.get("styled_xlsx", False),
+                    qc_lite_dashboard.QC_LITE_DASHBOARD_BUILD
+                )
+            )
+    except Exception:
+        dashboard_diagnostic_log_path = None
 
 show_qc_lite_dashboard(
     to_text(doc.Title),
     summary_data,
     key_issue_rows,
-    latest_report_path
+    latest_report_path,
+    show_detailed_output,
+    dashboard_diagnostic_log_path
 )

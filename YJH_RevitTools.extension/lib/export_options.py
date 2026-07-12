@@ -9,45 +9,48 @@ clr.AddReference("System.Drawing")
 clr.AddReference("System.Windows.Forms")
 
 from System import Guid
-from System.Drawing import Color, Font, FontFamily, FontStyle, Size
+from System.Drawing import (
+    Color, ContentAlignment, Font, FontFamily, FontStyle, Size
+)
 from System.Windows.Forms import (
-    AutoScaleMode,
-    Button,
-    CheckBox,
-    ColumnStyle,
-    DialogResult,
-    DockStyle,
-    FlowDirection,
-    FlowLayoutPanel,
-    FlatStyle,
-    FolderBrowserDialog,
-    Form,
-    FormBorderStyle,
-    FormStartPosition,
-    Label,
-    MessageBox,
-    MessageBoxButtons,
-    MessageBoxIcon,
-    Padding,
-    RowStyle,
-    SizeType,
-    TableLayoutPanel,
-    TextBox,
-    ToolTip
+    AnchorStyles, AutoScaleMode, AutoSizeMode, Button, CheckBox, ColumnStyle,
+    ComboBoxStyle, DialogResult, DockStyle, FlatStyle, FlowDirection,
+    FlowLayoutPanel, FolderBrowserDialog, Form, FormBorderStyle,
+    FormStartPosition, Label, MessageBox, MessageBoxButtons, MessageBoxIcon,
+    Padding, Panel, RowStyle, SizeType, TableLayoutPanel, TextBox, ToolTip
 )
 
+from qc_ui_style import (
+    attach_border_hover,
+    configure_content_scroll,
+    configure_tooltip,
+    detach_border_hover,
+    dispose_tooltip
+)
 from ui_close_profiler import create_ui_close_profile
-from qc_ui_style import configure_tooltip, dispose_tooltip
 
 
 LATEST_EXPORT_FOLDER_FILE = "latest_export_folder.txt"
-NAVY_COLOR = Color.FromArgb(38, 54, 69)
+
+NAVY_COLOR = Color.FromArgb(30, 45, 61)
 BUTTON_NAVY_COLOR = Color.FromArgb(83, 103, 119)
 BUTTON_HOVER_COLOR = Color.FromArgb(70, 88, 103)
-MUTED_COLOR = Color.FromArgb(95, 111, 125)
-BORDER_COLOR = Color.FromArgb(214, 221, 227)
-SECONDARY_BORDER_COLOR = Color.FromArgb(199, 208, 216)
-LIGHT_BACKGROUND_COLOR = Color.FromArgb(244, 246, 248)
+MUTED_COLOR = Color.FromArgb(100, 116, 135)
+ORANGE_COLOR = Color.FromArgb(242, 140, 40)
+ORANGE_LIGHT_COLOR = Color.FromArgb(255, 244, 234)
+BORDER_COLOR = Color.FromArgb(216, 222, 229)
+LIGHT_BACKGROUND_COLOR = Color.FromArgb(246, 248, 250)
+WARNING_COLOR = Color.FromArgb(200, 95, 26)
+
+WINDOW_OUTER_MARGIN = 28
+SECTION_GAP = 18
+SECTION_INNER_PADDING = 16
+ROW_GAP = 10
+CONTROL_HEIGHT = 36
+FOOTER_HEIGHT = 64
+FOOTER_BUTTON_WIDTH = 112
+FOOTER_BUTTON_HEIGHT = 40
+FOOTER_BUTTON_GAP = 12
 
 
 def get_preferred_font(size, style=FontStyle.Regular):
@@ -130,202 +133,481 @@ def validate_export_folder(folder_path):
 class ExportOptionsForm(Form):
     def __init__(self, last_folder, quick_mode):
         Form.__init__(self)
+        self.SuspendLayout()
         self.result = None
-        self.Text = "Revit QC - Export Options"
-        self.ClientSize = Size(820, 560)
-        self.MinimumSize = Size(780, 540)
-        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self._cleanup_done = False
+        self._border_hover_bindings = []
+
+        self.title_font = get_preferred_font(17.0, FontStyle.Bold)
+        self.subtitle_font = get_preferred_font(9.5, FontStyle.Regular)
+        self.section_font = get_preferred_font(10.0, FontStyle.Bold)
+        self.body_font = get_preferred_font(9.5, FontStyle.Regular)
+        self.card_title_font = get_preferred_font(9.5, FontStyle.Bold)
+        self.helper_font = get_preferred_font(8.5, FontStyle.Regular)
+        self.badge_font = get_preferred_font(8.0, FontStyle.Bold)
+        self.button_font = get_preferred_font(9.5, FontStyle.Regular)
+        self.tool_tip = configure_tooltip(ToolTip())
+
+        self.Text = "Revit QC - QC Lite Export"
+        self.ClientSize = Size(900, 680)
+        self.MinimumSize = Size(860, 650)
+        self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
-        self.MaximizeBox = False
+        self.MaximizeBox = True
         self.MinimizeBox = False
         self.ShowInTaskbar = False
         self.BackColor = Color.White
         self.ForeColor = NAVY_COLOR
-        self.Font = get_preferred_font(9.5)
-        self.AutoScaleMode = AutoScaleMode.Font
+        self.Font = self.body_font
+        self.AutoScaleMode = AutoScaleMode.Dpi
 
-        main_layout = TableLayoutPanel()
-        main_layout.Dock = DockStyle.Fill
-        main_layout.BackColor = Color.White
-        main_layout.Padding = Padding(28, 24, 28, 20)
-        main_layout.ColumnCount = 1
-        main_layout.RowCount = 6
-        main_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 38.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 32.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 88.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 32.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        main_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 52.0))
-        self.Controls.Add(main_layout)
+        self._build_layout(last_folder, quick_mode)
+        self.Shown += self._configure_scroll_fallback
+        self.ResumeLayout(True)
 
-        intro_label = Label()
-        intro_label.Text = "Select an export folder and output formats for the QC report."
-        intro_label.Dock = DockStyle.Fill
-        intro_label.AutoSize = False
-        intro_label.ForeColor = NAVY_COLOR
-        intro_label.Font = get_preferred_font(11.0, FontStyle.Bold)
-        intro_label.Padding = Padding(0, 3, 0, 0)
-        main_layout.Controls.Add(intro_label, 0, 0)
+    def _build_layout(self, last_folder, quick_mode):
+        root = TableLayoutPanel()
+        root.Dock = DockStyle.Fill
+        root.BackColor = Color.White
+        root.Padding = Padding(
+            WINDOW_OUTER_MARGIN,
+            24,
+            WINDOW_OUTER_MARGIN,
+            0
+        )
+        root.ColumnCount = 1
+        root.RowCount = 3
+        root.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        root.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        root.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        root.RowStyles.Add(RowStyle(SizeType.Absolute, float(FOOTER_HEIGHT)))
+        self.Controls.Add(root)
+
+        root.Controls.Add(self._build_header(), 0, 0)
+
+        self.main_panel = Panel()
+        self.main_panel.Dock = DockStyle.Fill
+        self.main_panel.Margin = Padding(0, 20, 0, 0)
+        self.main_panel.Padding = Padding(0)
+        self.main_panel.BackColor = Color.White
+        self.main_panel.AutoScroll = False
+        root.Controls.Add(self.main_panel, 0, 1)
+
+        content = TableLayoutPanel()
+        content.Dock = DockStyle.Top
+        content.AutoSize = True
+        content.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        content.Margin = Padding(0)
+        content.Padding = Padding(0)
+        content.ColumnCount = 1
+        content.RowCount = 2
+        content.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        content.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        content.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        self.main_panel.Controls.Add(content)
+        self.content_layout = content
+
+        location_section = self._build_location_section(last_folder)
+        location_section.Margin = Padding(0, 0, 0, SECTION_GAP)
+        content.Controls.Add(location_section, 0, 0)
+
+        formats_section = self._build_formats_section(quick_mode)
+        formats_section.Margin = Padding(0)
+        content.Controls.Add(formats_section, 0, 1)
+
+        root.Controls.Add(self._build_footer(), 0, 2)
+
+    def _build_header(self):
+        header = TableLayoutPanel()
+        header.Dock = DockStyle.Fill
+        header.AutoSize = True
+        header.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        header.Margin = Padding(0)
+        header.Padding = Padding(0)
+        header.ColumnCount = 1
+        header.RowCount = 2
+        header.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        header.RowStyles.Add(RowStyle(SizeType.AutoSize))
+
+        title = Label()
+        title.Text = u"QC Lite Export"
+        title.Dock = DockStyle.Fill
+        title.AutoSize = True
+        title.Font = self.title_font
+        title.ForeColor = NAVY_COLOR
+        title.Margin = Padding(0)
+        header.Controls.Add(title, 0, 0)
+
+        subtitle = Label()
+        subtitle.Text = u"빠른 QC 결과의 저장 위치와 출력 형식을 선택합니다."
+        subtitle.Dock = DockStyle.Fill
+        subtitle.AutoSize = True
+        subtitle.Font = self.subtitle_font
+        subtitle.ForeColor = MUTED_COLOR
+        subtitle.Margin = Padding(0, 6, 0, 0)
+        header.Controls.Add(subtitle, 0, 1)
+        return header
+
+    def _build_location_section(self, last_folder):
+        section = TableLayoutPanel()
+        section.Dock = DockStyle.Top
+        section.AutoSize = True
+        section.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        section.Padding = Padding(SECTION_INNER_PADDING, 12, SECTION_INNER_PADDING, 12)
+        section.BackColor = Color.White
+        section.ColumnCount = 1
+        section.RowCount = 3
+        section.RowStyles.Add(RowStyle(SizeType.Absolute, 26.0))
+        section.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
+        section.RowStyles.Add(RowStyle(SizeType.Absolute, 48.0))
+
+        title = self._create_section_title(u"EXPORT LOCATION")
+        section.Controls.Add(title, 0, 0)
 
         last_label = Label()
         if last_folder:
-            last_label.Text = u"Last export folder: {0}".format(last_folder)
+            last_label.Text = u"최근 저장 위치: {0}".format(last_folder)
         else:
-            last_label.Text = "Last export folder: Not available"
+            last_label.Text = u"최근 저장 위치: 없음"
         last_label.Dock = DockStyle.Fill
         last_label.AutoSize = False
         last_label.AutoEllipsis = True
+        last_label.Font = self.helper_font
         last_label.ForeColor = MUTED_COLOR
-        last_label.Padding = Padding(0, 2, 0, 0)
-        main_layout.Controls.Add(last_label, 0, 1)
-
-        self.tool_tip = configure_tooltip(ToolTip())
+        last_label.TextAlign = ContentAlignment.MiddleLeft
+        section.Controls.Add(last_label, 0, 1)
         self.tool_tip.SetToolTip(last_label, last_label.Text)
 
-        folder_layout = TableLayoutPanel()
-        folder_layout.Dock = DockStyle.Fill
-        folder_layout.Margin = Padding(0, 4, 0, 8)
-        folder_layout.ColumnCount = 1
-        folder_layout.RowCount = 2
-        folder_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        folder_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
-        folder_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        main_layout.Controls.Add(folder_layout, 0, 2)
-
-        folder_label = Label()
-        folder_label.Text = "Export folder"
-        folder_label.Dock = DockStyle.Fill
-        folder_label.AutoSize = False
-        folder_label.ForeColor = NAVY_COLOR
-        folder_label.Font = get_preferred_font(9.5, FontStyle.Bold)
-        folder_layout.Controls.Add(folder_label, 0, 0)
-
-        folder_input_layout = TableLayoutPanel()
-        folder_input_layout.Dock = DockStyle.Fill
-        folder_input_layout.Margin = Padding(0)
-        folder_input_layout.ColumnCount = 2
-        folder_input_layout.RowCount = 1
-        folder_input_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        folder_input_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 104.0))
-        folder_input_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        folder_layout.Controls.Add(folder_input_layout, 0, 1)
+        path_row = TableLayoutPanel()
+        path_row.Dock = DockStyle.Fill
+        path_row.Margin = Padding(0)
+        path_row.Padding = Padding(0)
+        path_row.ColumnCount = 3
+        path_row.RowCount = 1
+        path_row.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        path_row.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 12.0))
+        path_row.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 112.0))
+        path_row.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        section.Controls.Add(path_row, 0, 2)
 
         self.folder_text = TextBox()
         self.folder_text.Text = last_folder or u""
         self.folder_text.Dock = DockStyle.Fill
-        self.folder_text.Margin = Padding(0, 2, 12, 2)
+        self.folder_text.AutoSize = False
+        self.folder_text.Height = CONTROL_HEIGHT
+        self.folder_text.Margin = Padding(0, 6, 0, 6)
         self.folder_text.WordWrap = False
+        self.folder_text.Font = self.body_font
         self.folder_text.TextChanged += self._update_folder_tooltip
-        folder_input_layout.Controls.Add(self.folder_text, 0, 0)
-
+        path_row.Controls.Add(self.folder_text, 0, 0)
         self.tool_tip.SetToolTip(self.folder_text, self.folder_text.Text)
 
         self.browse_button = Button()
-        self.browse_button.Text = "Browse..."
-        self.browse_button.Dock = DockStyle.Fill
+        self.browse_button.Text = u"Browse"
+        self.browse_button.AutoSize = False
+        self.browse_button.Dock = getattr(DockStyle, "None")
+        self.browse_button.Anchor = getattr(AnchorStyles, "None")
+        self.browse_button.Size = Size(112, 40)
         self.browse_button.Margin = Padding(0)
+        self.browse_button.Font = self.button_font
         self._apply_secondary_button_style(self.browse_button)
+        self._border_hover_bindings.append(
+            attach_border_hover(self.browse_button)
+        )
         self.browse_button.Click += self._browse_folder
-        folder_input_layout.Controls.Add(self.browse_button, 1, 0)
+        path_row.Controls.Add(self.browse_button, 2, 0)
+        self.tool_tip.SetToolTip(
+            self.browse_button,
+            u"보고서를 저장할 폴더를 선택합니다."
+        )
+        return section
 
-        formats_label = Label()
-        formats_label.Text = "Save Options"
-        formats_label.Dock = DockStyle.Fill
-        formats_label.AutoSize = False
-        formats_label.ForeColor = NAVY_COLOR
-        formats_label.Font = get_preferred_font(9.5, FontStyle.Bold)
-        formats_label.Padding = Padding(0, 4, 0, 0)
-        main_layout.Controls.Add(formats_label, 0, 3)
+    def _build_formats_section(self, quick_mode):
+        section = TableLayoutPanel()
+        section.Dock = DockStyle.Top
+        section.AutoSize = True
+        section.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        section.Padding = Padding(SECTION_INNER_PADDING, 12, SECTION_INNER_PADDING, 12)
+        section.BackColor = Color.White
+        section.ColumnCount = 1
+        section.RowCount = 3
+        section.RowStyles.Add(RowStyle(SizeType.Absolute, 30.0))
+        section.RowStyles.Add(RowStyle(SizeType.Absolute, 246.0))
+        section.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
 
-        formats_layout = TableLayoutPanel()
-        formats_layout.Dock = DockStyle.Fill
-        formats_layout.BackColor = LIGHT_BACKGROUND_COLOR
-        formats_layout.Margin = Padding(0, 0, 0, 8)
-        formats_layout.Padding = Padding(14, 10, 14, 10)
-        formats_layout.ColumnCount = 1
-        formats_layout.RowCount = 6
-        formats_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
-        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
-        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
-        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
-        formats_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
-        formats_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        main_layout.Controls.Add(formats_layout, 0, 4)
+        section.Controls.Add(
+            self._create_section_title(u"OUTPUT FORMATS"),
+            0,
+            0
+        )
 
-        self.full_csv_check = self._create_check_box(
-            "Full CSV",
-            not quick_mode
+        grid = TableLayoutPanel()
+        grid.Dock = DockStyle.Fill
+        grid.Margin = Padding(0)
+        grid.Padding = Padding(0)
+        grid.BackColor = Color.White
+        grid.ColumnCount = 2
+        grid.RowCount = 3
+        grid.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
+        grid.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
+        for row_index in range(3):
+            grid.RowStyles.Add(RowStyle(SizeType.Percent, 33.333))
+        section.Controls.Add(grid, 0, 1)
+
+        styled_card, self.styled_xlsx_check = self._create_format_card(
+            u"Styled XLSX Report",
+            True,
+            u"서식 적용 상세 Excel 보고서",
+            True,
+            0,
+            0
         )
-        formats_layout.Controls.Add(self.full_csv_check, 0, 0)
-        self.summary_csv_check = self._create_check_box(
-            "Summary CSV",
-            True
+        grid.Controls.Add(styled_card, 0, 0)
+
+        summary_card, self.summary_csv_check = self._create_format_card(
+            u"Summary CSV",
+            True,
+            u"그룹별 QC 요약 CSV",
+            False,
+            1,
+            0
         )
-        formats_layout.Controls.Add(self.summary_csv_check, 0, 1)
-        self.styled_xlsx_check = self._create_check_box(
-            "Styled XLSX Report",
-            True
+        grid.Controls.Add(summary_card, 1, 0)
+
+        html_card, self.compact_html_check = self._create_format_card(
+            u"Compact Summary HTML",
+            quick_mode,
+            u"브라우저용 요약 보고서",
+            False,
+            0,
+            1
         )
-        formats_layout.Controls.Add(self.styled_xlsx_check, 0, 2)
-        self.compact_html_check = self._create_check_box(
-            "Compact Summary HTML",
-            quick_mode
+        grid.Controls.Add(html_card, 0, 1)
+
+        full_card, self.full_csv_check = self._create_format_card(
+            u"Full CSV",
+            not quick_mode,
+            u"전체 QC 상세 데이터 CSV",
+            False,
+            1,
+            1
         )
-        formats_layout.Controls.Add(self.compact_html_check, 0, 3)
-        self.compact_pdf_check = self._create_check_box(
-            "Compact Summary PDF",
-            False
+        grid.Controls.Add(full_card, 1, 1)
+
+        pdf_card, self.compact_pdf_check = self._create_format_card(
+            u"Compact Summary PDF",
+            False,
+            u"간결한 PDF 요약 보고서",
+            False,
+            0,
+            2
         )
-        formats_layout.Controls.Add(self.compact_pdf_check, 0, 4)
+        grid.Controls.Add(pdf_card, 0, 2)
+
+        empty = self._create_empty_format_card(1, 2)
+        grid.Controls.Add(empty, 1, 2)
 
         self.export_note_label = Label()
         self.export_note_label.Dock = DockStyle.Fill
         self.export_note_label.AutoSize = False
+        self.export_note_label.Font = self.subtitle_font
         self.export_note_label.ForeColor = MUTED_COLOR
-        self.export_note_label.Font = get_preferred_font(8.5)
-        self.export_note_label.Padding = Padding(26, 2, 0, 0)
-        formats_layout.Controls.Add(self.export_note_label, 0, 5)
+        self.export_note_label.TextAlign = ContentAlignment.MiddleLeft
+        self.export_note_label.Padding = Padding(2, 2, 0, 0)
+        section.Controls.Add(self.export_note_label, 0, 2)
 
-        self.full_csv_check.CheckedChanged += self._update_export_state
-        self.summary_csv_check.CheckedChanged += self._update_export_state
-        self.styled_xlsx_check.CheckedChanged += self._update_export_state
-        self.compact_html_check.CheckedChanged += self._update_export_state
-        self.compact_pdf_check.CheckedChanged += self._update_export_state
-        self._update_export_state(None, None)
+        self.export_checks = [
+            self.full_csv_check,
+            self.summary_csv_check,
+            self.styled_xlsx_check,
+            self.compact_html_check,
+            self.compact_pdf_check
+        ]
+        for check_box in self.export_checks:
+            check_box.CheckedChanged += self._update_export_state
+        return section
 
-        button_layout = FlowLayoutPanel()
-        button_layout.Dock = DockStyle.Fill
-        button_layout.FlowDirection = FlowDirection.RightToLeft
-        button_layout.WrapContents = False
-        button_layout.Margin = Padding(0)
-        button_layout.Padding = Padding(0, 10, 0, 0)
-        main_layout.Controls.Add(button_layout, 0, 5)
+    def _create_format_card(
+        self,
+        title_text,
+        checked,
+        description,
+        recommended,
+        column_index,
+        row_index
+    ):
+        outer = TableLayoutPanel()
+        outer.Dock = DockStyle.Fill
+        outer.Margin = Padding(
+            0 if column_index == 0 else 5,
+            0 if row_index == 0 else 5,
+            5 if column_index == 0 else 0,
+            5 if row_index < 2 else 0
+        )
+        outer.Padding = Padding(1)
+        outer.BackColor = ORANGE_COLOR if recommended else BORDER_COLOR
+        outer.ColumnCount = 1
+        outer.RowCount = 1
+        outer.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        outer.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
 
-        ok_button = Button()
-        ok_button.Text = "Run QC"
-        ok_button.Size = Size(104, 34)
-        ok_button.Margin = Padding(10, 0, 0, 0)
-        self._apply_primary_button_style(ok_button)
-        ok_button.Click += self._confirm
-        self.AcceptButton = ok_button
+        card = TableLayoutPanel()
+        card.Dock = DockStyle.Fill
+        card.Margin = Padding(0)
+        card.Padding = Padding(12, 8, 12, 8)
+        card.BackColor = ORANGE_LIGHT_COLOR if recommended else LIGHT_BACKGROUND_COLOR
+        card.ColumnCount = 1
+        card.RowCount = 2
+        card.RowStyles.Add(RowStyle(SizeType.Absolute, 32.0))
+        card.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        outer.Controls.Add(card, 0, 0)
+
+        header = TableLayoutPanel()
+        header.Dock = DockStyle.Fill
+        header.Margin = Padding(0)
+        header.ColumnCount = 2
+        header.RowCount = 1
+        header.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        header.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, 48.0 if recommended else 0.0)
+        )
+        header.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        card.Controls.Add(header, 0, 0)
+
+        check_box = CheckBox()
+        check_box.Text = title_text
+        check_box.Dock = DockStyle.Fill
+        check_box.AutoSize = False
+        check_box.Margin = Padding(0)
+        check_box.Font = self.card_title_font
+        check_box.ForeColor = NAVY_COLOR
+        check_box.TextAlign = ContentAlignment.MiddleLeft
+        check_box.Checked = checked
+        header.Controls.Add(check_box, 0, 0)
+
+        if recommended:
+            badge = Label()
+            badge.Text = u"권장"
+            badge.Dock = DockStyle.Fill
+            badge.AutoSize = False
+            badge.Margin = Padding(4, 5, 0, 5)
+            badge.BackColor = Color.White
+            badge.ForeColor = ORANGE_COLOR
+            badge.Font = self.badge_font
+            badge.TextAlign = ContentAlignment.MiddleCenter
+            header.Controls.Add(badge, 1, 0)
+
+        helper = Label()
+        helper.Text = description
+        helper.Dock = DockStyle.Fill
+        helper.AutoSize = False
+        helper.AutoEllipsis = False
+        helper.Margin = Padding(22, 0, 0, 0)
+        helper.Font = self.helper_font
+        helper.ForeColor = MUTED_COLOR
+        helper.TextAlign = ContentAlignment.MiddleLeft
+        helper.UseCompatibleTextRendering = True
+        card.Controls.Add(helper, 0, 1)
+
+        self.tool_tip.SetToolTip(check_box, description)
+        self.tool_tip.SetToolTip(helper, description)
+        return outer, check_box
+
+    def _create_empty_format_card(self, column_index, row_index):
+        outer = TableLayoutPanel()
+        outer.Dock = DockStyle.Fill
+        outer.Margin = Padding(
+            0 if column_index == 0 else 5,
+            0 if row_index == 0 else 5,
+            5 if column_index == 0 else 0,
+            5 if row_index < 2 else 0
+        )
+        outer.Padding = Padding(1)
+        outer.BackColor = BORDER_COLOR
+        outer.ColumnCount = 1
+        outer.RowCount = 1
+        outer.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        outer.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        inner = Panel()
+        inner.Dock = DockStyle.Fill
+        inner.Margin = Padding(0)
+        inner.BackColor = LIGHT_BACKGROUND_COLOR
+        outer.Controls.Add(inner, 0, 0)
+        return outer
+
+    def _create_section_title(self, text):
+        label = Label()
+        label.Text = text
+        label.Dock = DockStyle.Fill
+        label.AutoSize = False
+        label.Font = self.section_font
+        label.ForeColor = NAVY_COLOR
+        label.TextAlign = ContentAlignment.MiddleLeft
+        return label
+
+    def _build_footer(self):
+        footer = Panel()
+        footer.Dock = DockStyle.Fill
+        footer.AutoSize = False
+        footer.Margin = Padding(0)
+        footer.Padding = Padding(0, 0, 0, 24)
+
+        strip = FlowLayoutPanel()
+        strip.Dock = DockStyle.Right
+        strip.AutoSize = False
+        strip.Width = (
+            FOOTER_BUTTON_WIDTH * 2 + FOOTER_BUTTON_GAP
+        )
+        strip.FlowDirection = FlowDirection.LeftToRight
+        strip.WrapContents = False
+        strip.Margin = Padding(0)
+        strip.Padding = Padding(0)
+        footer.Controls.Add(strip)
 
         cancel_button = Button()
-        cancel_button.Text = "Cancel"
-        cancel_button.Size = Size(104, 34)
-        cancel_button.Margin = Padding(10, 0, 0, 0)
+        cancel_button.Text = u"Cancel"
+        cancel_button.AutoSize = False
+        cancel_button.Dock = getattr(DockStyle, "None")
+        cancel_button.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
+        cancel_button.Margin = Padding(0, 0, FOOTER_BUTTON_GAP, 0)
+        cancel_button.Font = self.button_font
+        cancel_button.TextAlign = ContentAlignment.MiddleCenter
+        cancel_button.UseCompatibleTextRendering = False
         self._apply_secondary_button_style(cancel_button)
+        self.cancel_button = cancel_button
+        self._border_hover_bindings.append(
+            attach_border_hover(cancel_button)
+        )
         cancel_button.DialogResult = DialogResult.Cancel
-        button_layout.Controls.Add(cancel_button)
-        button_layout.Controls.Add(ok_button)
+        strip.Controls.Add(cancel_button)
+
+        self.ok_button = Button()
+        self.ok_button.Text = u"Run QC"
+        self.ok_button.AutoSize = False
+        self.ok_button.Dock = getattr(DockStyle, "None")
+        self.ok_button.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
+        self.ok_button.Margin = Padding(0)
+        self.ok_button.Font = self.button_font
+        self.ok_button.TextAlign = ContentAlignment.MiddleCenter
+        self.ok_button.UseCompatibleTextRendering = False
+        self._apply_primary_button_style(self.ok_button)
+        self.ok_button.Click += self._confirm
+        strip.Controls.Add(self.ok_button)
+
+        self.tool_tip.SetToolTip(
+            self.ok_button,
+            u"선택한 형식으로 QC를 실행하고 보고서를 저장합니다."
+        )
+        self.AcceptButton = self.ok_button
         self.CancelButton = cancel_button
+        self._update_export_state(None, None)
+        return footer
 
     def _apply_secondary_button_style(self, button):
         button.FlatStyle = FlatStyle.Flat
         button.FlatAppearance.BorderSize = 1
-        button.FlatAppearance.BorderColor = SECONDARY_BORDER_COLOR
-        button.FlatAppearance.MouseOverBackColor = LIGHT_BACKGROUND_COLOR
+        button.FlatAppearance.BorderColor = BORDER_COLOR
+        button.FlatAppearance.MouseOverBackColor = ORANGE_LIGHT_COLOR
         button.FlatAppearance.MouseDownBackColor = BORDER_COLOR
         button.BackColor = Color.White
         button.ForeColor = NAVY_COLOR
@@ -341,49 +623,43 @@ class ExportOptionsForm(Form):
         button.ForeColor = Color.White
         button.UseVisualStyleBackColor = False
 
-    def _create_check_box(self, text, checked):
-        check_box = CheckBox()
-        check_box.Text = text
-        check_box.Dock = DockStyle.Fill
-        check_box.AutoSize = True
-        check_box.Margin = Padding(4, 4, 4, 4)
-        check_box.ForeColor = NAVY_COLOR
-        check_box.Checked = checked
-        return check_box
-
     def _has_selected_export(self):
-        return (
-            self.full_csv_check.Checked
-            or self.summary_csv_check.Checked
-            or self.styled_xlsx_check.Checked
-            or self.compact_html_check.Checked
-            or self.compact_pdf_check.Checked
+        return any(check_box.Checked for check_box in self.export_checks)
+
+    def _configure_scroll_fallback(self, sender, event_args):
+        configure_content_scroll(
+            self,
+            self.main_panel,
+            self.content_layout,
+            0.94
         )
 
     def _update_export_state(self, sender, event_args):
-        has_selected_export = self._has_selected_export()
+        if not hasattr(self, "export_checks"):
+            return
+        selected_count = sum(
+            1 for check_box in self.export_checks if check_box.Checked
+        )
+        has_selected_export = selected_count > 0
         self.folder_text.Enabled = has_selected_export
         self.browse_button.Enabled = has_selected_export
+        if hasattr(self, "ok_button"):
+            self.ok_button.Enabled = has_selected_export
 
         if has_selected_export:
-            self.export_note_label.Text = (
-                "Selected files will be saved to the export folder."
+            self.export_note_label.Text = u"선택된 출력 형식  {0}개".format(
+                selected_count
             )
+            self.export_note_label.ForeColor = MUTED_COLOR
         else:
             self.export_note_label.Text = (
-                "No files will be saved. Results will still be shown after QC."
+                u"선택된 출력 형식  0개 · 하나 이상의 출력 형식을 선택하세요."
             )
+            self.export_note_label.ForeColor = WARNING_COLOR
 
     def _update_folder_tooltip(self, sender, event_args):
         if getattr(self, "tool_tip", None) is not None:
             self.tool_tip.SetToolTip(self.folder_text, self.folder_text.Text)
-
-    def cleanup(self):
-        if getattr(self, "_cleanup_done", False):
-            return
-        self._cleanup_done = True
-        dispose_tooltip(getattr(self, "tool_tip", None))
-        self.tool_tip = None
 
     def _browse_folder(self, sender, event_args):
         dialog = FolderBrowserDialog()
@@ -394,32 +670,35 @@ class ExportOptionsForm(Form):
         if os.path.isdir(current_folder):
             dialog.SelectedPath = current_folder
 
-        dialog_result = dialog.ShowDialog(self)
-        if dialog_result == DialogResult.OK:
-            self.folder_text.Text = dialog.SelectedPath
-        else:
-            self.result = None
-            self.DialogResult = DialogResult.Cancel
-            self.Close()
-
-        dialog.Dispose()
+        try:
+            if dialog.ShowDialog(self) == DialogResult.OK:
+                self.folder_text.Text = dialog.SelectedPath
+        finally:
+            dialog.Dispose()
 
     def _confirm(self, sender, event_args):
         has_selected_export = self._has_selected_export()
-        folder_path = self.folder_text.Text.strip() if has_selected_export else u""
+        if not has_selected_export:
+            MessageBox.Show(
+                self,
+                u"하나 이상의 출력 형식을 선택하세요.",
+                "QC Lite Export",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            )
+            return
 
-        if has_selected_export:
-            is_valid, validation_error = validate_export_folder(folder_path)
-
-            if not is_valid:
-                MessageBox.Show(
-                    self,
-                    validation_error,
-                    "Export Options",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                )
-                return
+        folder_path = self.folder_text.Text.strip()
+        is_valid, validation_error = validate_export_folder(folder_path)
+        if not is_valid:
+            MessageBox.Show(
+                self,
+                validation_error,
+                "QC Lite Export",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            )
+            return
 
         selected_formats = []
         if self.full_csv_check.Checked:
@@ -445,6 +724,52 @@ class ExportOptionsForm(Form):
         }
         self.DialogResult = DialogResult.OK
         self.Close()
+
+    def cleanup(self):
+        if self._cleanup_done:
+            return
+        self._cleanup_done = True
+        for binding in self._border_hover_bindings:
+            detach_border_hover(binding)
+        self._border_hover_bindings = []
+        try:
+            self.Shown -= self._configure_scroll_fallback
+        except Exception:
+            pass
+        try:
+            self.folder_text.TextChanged -= self._update_folder_tooltip
+        except Exception:
+            pass
+        try:
+            self.browse_button.Click -= self._browse_folder
+        except Exception:
+            pass
+        if hasattr(self, "export_checks"):
+            for check_box in self.export_checks:
+                try:
+                    check_box.CheckedChanged -= self._update_export_state
+                except Exception:
+                    pass
+        try:
+            self.ok_button.Click -= self._confirm
+        except Exception:
+            pass
+        dispose_tooltip(getattr(self, "tool_tip", None))
+        self.tool_tip = None
+        for font in (
+            self.title_font,
+            self.subtitle_font,
+            self.section_font,
+            self.body_font,
+            self.card_title_font,
+            self.helper_font,
+            self.badge_font,
+            self.button_font
+        ):
+            try:
+                font.Dispose()
+            except Exception:
+                pass
 
 
 def request_export_options(reports_dir, quick_mode=False):

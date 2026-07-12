@@ -2,21 +2,23 @@
 
 """DOC QC setup and QC Lite dashboard presentation only."""
 
+import io
 import os
+from datetime import datetime
 
 import clr
 
 clr.AddReference("System.Drawing")
 clr.AddReference("System.Windows.Forms")
 
-from System.Drawing import Color, ContentAlignment, FontStyle, Size
+from System.Drawing import Color, ContentAlignment, FontStyle, Point, Size
 from System.Windows.Forms import (
     AutoScaleMode, AutoSizeMode, BorderStyle, Button, CheckBox, ColumnStyle, ComboBox,
     ComboBoxStyle, DialogResult, DockStyle, FlowDirection, FlowLayoutPanel,
     FolderBrowserDialog, Form, FormBorderStyle, FormStartPosition,
     GroupBox, Label, MessageBox, MessageBoxButtons, MessageBoxIcon, Padding,
-    Panel, RowStyle, SizeType, TableLayoutPanel, TableLayoutPanelCellBorderStyle,
-    TextBox, ToolTip
+    Panel, RowStyle, Screen, SizeType, TableLayoutPanel,
+    TableLayoutPanelCellBorderStyle, TextBox, ToolTip
 )
 
 from export_options import (
@@ -43,16 +45,21 @@ from qc_ui_style import (
     SECTION_GAP,
     WINDOW_PADDING,
     WARNING_BACKGROUND_COLOR as ORANGE_LIGHT,
+    attach_border_hover,
     apply_primary_button_style,
     apply_secondary_button_style,
     configure_content_scroll,
     configure_tooltip,
+    detach_border_hover,
     dispose_tooltip,
     get_preferred_font as get_font
 )
 
 
 RED_LIGHT = Color.FromArgb(253, 239, 238)
+TABLE_HEADER_COLOR = Color.FromArgb(241, 244, 247)
+SEPARATOR_COLOR = Color.FromArgb(224, 229, 234)
+QC_LITE_DASHBOARD_BUILD = u"qc-lite-dashboard-step03"
 
 
 class QcFormBase(Form):
@@ -551,13 +558,49 @@ class DocQcSetupForm(QcFormBase):
 
 
 class QcLiteDashboardForm(QcFormBase):
-    def __init__(self, project_name, summary_data, key_issue_rows, report_path):
+    def __init__(
+        self,
+        project_name,
+        summary_data,
+        key_issue_rows,
+        report_path,
+        details_callback=None,
+        diagnostic_log_path=None
+    ):
         Form.__init__(self)
         self.SuspendLayout()
         self.report_path = report_path
+        self.details_callback = details_callback
+        self.diagnostic_log_path = diagnostic_log_path
+        self._dashboard_cleanup_done = False
+        self._dashboard_hover_bindings = []
+        self._dashboard_fonts = [
+            get_font(17.0, FontStyle.Bold),
+            get_font(12.0, FontStyle.Bold),
+            get_font(9.5, FontStyle.Bold),
+            get_font(20.0, FontStyle.Bold),
+            get_font(13.5, FontStyle.Bold),
+            get_font(9.0),
+            get_font(11.0, FontStyle.Bold),
+            get_font(18.0, FontStyle.Bold),
+            get_font(9.5)
+        ]
+        self.title_font = self._dashboard_fonts[0]
+        self.project_font = self._dashboard_fonts[1]
+        self.card_title_font = self._dashboard_fonts[2]
+        self.card_count_font = self._dashboard_fonts[3]
+        self.stat_font = self._dashboard_fonts[4]
+        self.small_font = self._dashboard_fonts[5]
+        self.issue_title_font = self._dashboard_fonts[6]
+        self.neutral_count_font = self._dashboard_fonts[7]
+        self.table_body_font = self._dashboard_fonts[8]
+        display_issue_count = min(5, len(key_issue_rows))
         self.Text = "Revit QC - QC Lite Dashboard"
-        self.ClientSize = Size(1020, 720)
-        self.MinimumSize = Size(900, 640)
+        self.ClientSize = Size(
+            1120,
+            760 + max(0, display_issue_count - 3) * 20
+        )
+        self.MinimumSize = Size(980, 720)
         self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = True
@@ -565,11 +608,12 @@ class QcLiteDashboardForm(QcFormBase):
         self.ShowInTaskbar = False
         self.BackColor = Color.White
         self.ForeColor = NAVY
-        self.Font = get_font(9.5)
+        self.Font = self.small_font
         self.AutoScaleMode = AutoScaleMode.Dpi
         self.tool_tip = configure_tooltip(ToolTip())
 
         main = TableLayoutPanel()
+        self.root_layout = main
         main.Dock = DockStyle.Fill
         main.Padding = Padding(
             OUTER_MARGIN,
@@ -580,27 +624,45 @@ class QcLiteDashboardForm(QcFormBase):
         main.ColumnCount = 1
         main.RowCount = 5
         main.RowStyles.Add(RowStyle(SizeType.AutoSize))
-        for height in [144, 86]:
-            main.RowStyles.Add(RowStyle(SizeType.Absolute, float(height)))
-        main.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        main.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        main.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        main.RowStyles.Add(RowStyle(SizeType.AutoSize))
         main.RowStyles.Add(RowStyle(SizeType.Absolute, float(FOOTER_HEIGHT)))
         self.Controls.Add(main)
-        header_panel = Panel()
+        header_panel = TableLayoutPanel()
         header_panel.Dock = DockStyle.Fill
         header_panel.AutoSize = True
         header_panel.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        header_panel.ColumnCount = 1
+        header_panel.RowCount = 2
+        header_panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        header_panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
         main.Controls.Add(header_panel, 0, 0)
-        header = Label()
-        header.Text = u"QC Lite Dashboard\r\n{0}".format(project_name)
-        header.Dock = DockStyle.Top
-        header.AutoSize = True
-        header.MinimumSize = Size(0, 58)
-        header.Font = get_font(16.0, FontStyle.Bold)
-        header_panel.Controls.Add(header)
+        title = Label()
+        title.Text = u"QC Lite Dashboard"
+        title.Dock = DockStyle.Fill
+        title.AutoSize = True
+        title.Font = self.title_font
+        title.ForeColor = NAVY
+        title.Margin = Padding(0)
+        header_panel.Controls.Add(title, 0, 0)
+        project = Label()
+        project.Text = u"{0}".format(project_name)
+        project.Dock = DockStyle.Fill
+        project.AutoSize = True
+        project.AutoEllipsis = True
+        project.Font = self.project_font
+        project.ForeColor = MUTED
+        project.Margin = Padding(0, 5, 0, 0)
+        header_panel.Controls.Add(project, 0, 1)
+        self.set_tip(project, project.Text)
 
         cards = TableLayoutPanel()
-        cards.Dock = DockStyle.Fill
-        cards.Margin = Padding(0, HEADER_BOTTOM_MARGIN, 0, 0)
+        self.summary_cards = cards
+        cards.Dock = DockStyle.Top
+        cards.AutoSize = True
+        cards.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        cards.Margin = Padding(0, 22, 0, 0)
         cards.ColumnCount = 4
         for _index in range(4):
             cards.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 25.0))
@@ -616,60 +678,179 @@ class QcLiteDashboardForm(QcFormBase):
         cards.Controls.Add(self._card(
             "PARAMETER QC",
             summary_data.get("parameter_issues", 0),
-            "Quick QC에 포함"
+            "QC Lite에 포함"
         ), 2, 0)
-        cards.Controls.Add(self._card("SCAN QC", u"N/A", "Scan QC에서 검토"), 3, 0)
+        scan_card = self._card("SCAN QC", u"—", "Not Run", False)
+        cards.Controls.Add(scan_card, 3, 0)
+        self.set_tip(scan_card, u"Scan QC에서 별도 검토합니다.")
 
-        counts = Label()
-        counts.Text = u"ISSUE COUNT   {0}     HIGH {1}   MEDIUM {2}   LOW {3}".format(
-            summary_data.get("total_issues", 0),
-            summary_data.get("high_count", 0),
-            summary_data.get("medium_count", 0),
-            summary_data.get("low_count", 0)
-        )
-        counts.Dock = DockStyle.Fill
-        counts.Font = get_font(10.5, FontStyle.Bold)
+        counts = TableLayoutPanel()
+        self.issue_stats = counts
+        counts.Dock = DockStyle.Top
+        counts.AutoSize = True
+        counts.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        counts.MinimumSize = Size(0, 64)
+        counts.MaximumSize = Size(0, 64)
+        counts.ColumnCount = 7
+        counts.RowCount = 1
+        counts.Margin = Padding(4, 0, 4, 0)
         counts.BackColor = ORANGE_LIGHT
-        counts.BorderStyle = BorderStyle.FixedSingle
-        counts.TextAlign = ContentAlignment.MiddleLeft
-        counts.Padding = Padding(16, 0, 16, 0)
-        counts.Margin = Padding(4, 10, 4, 10)
+        for column_index in range(7):
+            if column_index % 2 == 0:
+                counts.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 25.0))
+            else:
+                counts.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 1.0))
+        count_values = [
+            (u"ISSUE COUNT", summary_data.get("total_issues", 0)),
+            (u"HIGH", summary_data.get("high_count", 0)),
+            (u"MEDIUM", summary_data.get("medium_count", 0)),
+            (u"LOW", summary_data.get("low_count", 0))
+        ]
+        for column_index, count_value in enumerate(count_values):
+            counts.Controls.Add(
+                self._stat_cell(count_value[0], count_value[1]),
+                column_index * 2,
+                0
+            )
+            if column_index < 3:
+                separator = Panel()
+                separator.Dock = DockStyle.Fill
+                separator.Margin = Padding(0, 12, 0, 12)
+                separator.BackColor = SEPARATOR_COLOR
+                counts.Controls.Add(separator, column_index * 2 + 1, 0)
         main.Controls.Add(counts, 0, 2)
 
-        issue_group = self.make_group("Top Issues")
-        issue_layout = TableLayoutPanel()
-        issue_layout.Dock = DockStyle.Fill
-        issue_layout.Padding = Padding(14, 10, 14, 10)
-        issue_layout.ColumnCount = 1
-        rows = key_issue_rows[:6]
-        issue_layout.RowCount = max(1, len(rows))
-        for _index in range(max(1, len(rows))):
-            issue_layout.RowStyles.Add(RowStyle(SizeType.Percent, 100.0 / max(1, len(rows))))
-        issue_group.Controls.Add(issue_layout)
+        issue_group = self.make_group(u"")
+        self.top_issues_group = issue_group
+        issue_group.Margin = Padding(0, 0, 0, 18)
+        issue_content = TableLayoutPanel()
+        issue_content.Dock = DockStyle.Top
+        issue_content.AutoSize = True
+        issue_content.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        issue_content.Padding = Padding(14, 8, 14, 10)
+        issue_content.ColumnCount = 1
+        issue_content.RowCount = 2
+        issue_content.RowStyles.Add(RowStyle(SizeType.Absolute, 70.0))
+        issue_content.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        issue_group.Controls.Add(issue_content)
         main.Controls.Add(issue_group, 0, 3)
+
+        issue_actions = TableLayoutPanel()
+        self.top_issues_header = issue_actions
+        issue_actions.Dock = DockStyle.Fill
+        issue_actions.ColumnCount = 2
+        issue_actions.RowCount = 2
+        issue_actions.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        issue_actions.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 96.0))
+        issue_actions.RowStyles.Add(RowStyle(SizeType.Absolute, 44.0))
+        issue_actions.RowStyles.Add(RowStyle(SizeType.Absolute, 26.0))
+        issue_actions.Margin = Padding(0)
+        issue_content.Controls.Add(issue_actions, 0, 0)
+        issue_title = Label()
+        issue_title.Text = u"Top Issues"
+        issue_title.Dock = DockStyle.Fill
+        issue_title.Font = self.issue_title_font
+        issue_title.ForeColor = NAVY
+        issue_title.TextAlign = ContentAlignment.MiddleLeft
+        issue_title.Margin = Padding(0)
+        issue_actions.Controls.Add(issue_title, 0, 0)
+        issue_note = Label()
+        issue_note.Text = u"심각도가 높은 주요 항목을 최대 5개 표시"
+        issue_note.Dock = DockStyle.Fill
+        issue_note.ForeColor = MUTED
+        issue_note.Font = self.small_font
+        issue_note.TextAlign = ContentAlignment.MiddleLeft
+        issue_note.Margin = Padding(0)
+        issue_note.AutoSize = True
+        issue_actions.Controls.Add(issue_note, 0, 1)
+        issue_actions.SetColumnSpan(issue_note, 2)
+        details = Button()
+        details.Text = u"Details"
+        details.AutoSize = False
+        details.Dock = getattr(DockStyle, "None")
+        details.Size = Size(96, 36)
+        details.Margin = Padding(0, 4, 0, 4)
+        details.Enabled = callable(details_callback)
+        self.style_button(details)
+        self._dashboard_hover_bindings.append(
+            attach_border_hover(details)
+        )
+        details.Click += self._show_details
+        issue_actions.Controls.Add(details, 1, 0)
+        self.set_tip(details, u"pyRevit Output에서 상세 QC 결과와 Export 상태를 확인합니다.")
+
+        issue_layout = TableLayoutPanel()
+        self.top_issues_table = issue_layout
+        self.top_issues_header_labels = []
+        issue_layout.Dock = DockStyle.Top
+        issue_layout.AutoSize = True
+        issue_layout.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        issue_layout.Padding = Padding(0)
+        issue_layout.Margin = Padding(0)
+        issue_layout.ColumnCount = 4
+        issue_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 96.0))
+        issue_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 126.0))
+        issue_layout.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        issue_layout.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 150.0))
+        rows = key_issue_rows[:5]
+        issue_layout.RowCount = 1 + max(1, len(rows))
+        issue_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 38.0))
+        for _index in range(max(1, len(rows))):
+            issue_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 46.0))
+        issue_content.Controls.Add(issue_layout, 0, 1)
+        for column_index, header_text in enumerate([
+            u"SEVERITY", u"CATEGORY", u"ITEM", u"QC ITEM"
+        ]):
+            header_label = Label()
+            header_label.Text = header_text
+            header_label.Dock = DockStyle.Fill
+            header_label.AutoSize = False
+            header_label.AutoEllipsis = False
+            header_label.UseCompatibleTextRendering = False
+            header_label.Font = self.card_title_font
+            header_label.ForeColor = MUTED
+            header_label.BackColor = TABLE_HEADER_COLOR
+            header_label.TextAlign = ContentAlignment.MiddleLeft
+            header_label.Padding = Padding(10, 0, 8, 0)
+            header_label.Margin = Padding(1)
+            issue_layout.Controls.Add(header_label, column_index, 0)
+            self.top_issues_header_labels.append(header_label)
         if rows:
             for index, row in enumerate(rows):
-                label = Label()
-                label.Text = u"{0}  |  {1}  |  {2}  |  {3}".format(
-                    row[3], row[0], row[2], row[4]
-                )
-                label.Dock = DockStyle.Fill
-                label.AutoEllipsis = True
-                label.TextAlign = ContentAlignment.MiddleLeft
-                label.Padding = Padding(10, 0, 10, 0)
-                label.BackColor = RED_LIGHT if row[3] == u"High" else LIGHT
-                label.Margin = Padding(2, 3, 2, 3)
-                issue_layout.Controls.Add(label, 0, index)
-                self.set_tip(label, label.Text)
+                values = [row[3], row[0], row[2], row[4]]
+                for column_index, value in enumerate(values):
+                    label = Label()
+                    label.Text = u"{0}".format(value)
+                    label.Dock = DockStyle.Fill
+                    label.AutoSize = False
+                    label.AutoEllipsis = column_index == 2
+                    label.UseCompatibleTextRendering = False
+                    label.TextAlign = ContentAlignment.MiddleLeft
+                    label.Padding = Padding(10, 0, 8, 0)
+                    label.Margin = Padding(1)
+                    label.BackColor = (
+                        RED_LIGHT
+                        if column_index == 0 and row[3] == u"High"
+                        else Color.White
+                    )
+                    label.Font = (
+                        self.card_title_font
+                        if column_index == 0
+                        else self.table_body_font
+                    )
+                    issue_layout.Controls.Add(label, column_index, index + 1)
+                    self.set_tip(label, label.Text)
         else:
             label = Label()
             label.Text = "표시할 주요 Issue가 없습니다."
             label.Dock = DockStyle.Fill
             label.TextAlign = ContentAlignment.MiddleCenter
             label.ForeColor = MUTED
-            issue_layout.Controls.Add(label, 0, 0)
+            issue_layout.Controls.Add(label, 0, 1)
+            issue_layout.SetColumnSpan(label, 4)
 
         footer_panel = Panel()
+        self.dashboard_footer = footer_panel
         footer_panel.Dock = DockStyle.Bottom
         footer_panel.AutoSize = False
         footer_panel.Height = FOOTER_HEIGHT
@@ -687,22 +868,32 @@ class QcLiteDashboardForm(QcFormBase):
         footer_panel.Controls.Add(buttons)
         dock_none = getattr(DockStyle, "None")
         doc_qc = Button()
-        doc_qc.Text = "Open Full DOC QC"
+        doc_qc.Text = "DOC QC"
         doc_qc.AutoSize = False
         doc_qc.Dock = dock_none
         doc_qc.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
         doc_qc.Margin = Padding(0, 0, BUTTON_GAP, 0)
+        doc_qc.TextAlign = ContentAlignment.MiddleCenter
+        doc_qc.UseCompatibleTextRendering = False
         self.style_button(doc_qc)
+        self._dashboard_hover_bindings.append(
+            attach_border_hover(doc_qc)
+        )
         doc_qc.Click += self._doc_qc_guide
         buttons.Controls.Add(doc_qc)
         report = Button()
-        report.Text = "Open Report"
+        report.Text = "Report"
         report.AutoSize = False
         report.Dock = dock_none
         report.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
         report.Margin = Padding(0, 0, BUTTON_GAP, 0)
+        report.TextAlign = ContentAlignment.MiddleCenter
+        report.UseCompatibleTextRendering = False
         report.Enabled = bool(report_path)
         self.style_button(report)
+        self._dashboard_hover_bindings.append(
+            attach_border_hover(report)
+        )
         report.Click += self._open_report
         buttons.Controls.Add(report)
         close = Button()
@@ -711,44 +902,280 @@ class QcLiteDashboardForm(QcFormBase):
         close.Dock = dock_none
         close.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
         close.Margin = Padding(0)
+        close.TextAlign = ContentAlignment.MiddleCenter
+        close.UseCompatibleTextRendering = False
         close.DialogResult = DialogResult.OK
         self.style_button(close, True)
         buttons.Controls.Add(close)
         self.AcceptButton = close
+        self.Shown += self._dashboard_shown
         self.ResumeLayout(True)
         self.PerformLayout()
 
-    def _card(self, title, count, note):
+    def cleanup(self):
+        if self._dashboard_cleanup_done:
+            return
+        self._dashboard_cleanup_done = True
+        try:
+            self.Shown -= self._dashboard_shown
+        except Exception:
+            pass
+        for binding in self._dashboard_hover_bindings:
+            detach_border_hover(binding)
+        self._dashboard_hover_bindings = []
+        QcFormBase.cleanup(self)
+        for font in self._dashboard_fonts:
+            try:
+                font.Dispose()
+            except Exception:
+                pass
+        self._dashboard_fonts = []
+
+    def _dashboard_shown(self, sender, event_args):
+        try:
+            self.PerformLayout()
+            root_preferred = self.root_layout.GetPreferredSize(Size(0, 0))
+            working_area = Screen.FromControl(self).WorkingArea
+            maximum_width = int(working_area.Width * 0.92)
+            maximum_height = int(working_area.Height * 0.92)
+            desired_width = min(
+                maximum_width,
+                max(1120, root_preferred.Width + OUTER_MARGIN * 2)
+            )
+            desired_height = min(
+                maximum_height,
+                max(760, root_preferred.Height + OUTER_MARGIN)
+            )
+            if (
+                self.ClientSize.Width != desired_width
+                or self.ClientSize.Height != desired_height
+            ):
+                self.ClientSize = Size(desired_width, desired_height)
+                self.PerformLayout()
+            left = min(
+                max(self.Left, working_area.Left),
+                max(working_area.Left, working_area.Right - self.Width)
+            )
+            top = min(
+                max(self.Top, working_area.Top),
+                max(working_area.Top, working_area.Bottom - self.Height)
+            )
+            if self.Left != left or self.Top != top:
+                self.Location = Point(left, top)
+        except Exception:
+            pass
+        if self.diagnostic_log_path:
+            self._write_layout_diagnostics(sender, event_args)
+
+    def _write_layout_diagnostics(self, sender, event_args):
+        if not self.diagnostic_log_path:
+            return
+        try:
+            self.PerformLayout()
+            log_folder = os.path.dirname(self.diagnostic_log_path)
+            if log_folder and not os.path.isdir(log_folder):
+                os.makedirs(log_folder)
+            lines = [
+                u"[{0}] dashboard_layout".format(
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                ),
+                u"module={0}".format(__file__),
+                u"class={0}".format(self.__class__.__name__),
+                u"build={0}".format(QC_LITE_DASHBOARD_BUILD),
+                u"client_size={0}x{1}".format(
+                    self.ClientSize.Width,
+                    self.ClientSize.Height
+                ),
+                u"device_dpi={0}".format(getattr(self, "DeviceDpi", u"N/A")),
+                u"auto_scale_mode={0}".format(self.AutoScaleMode)
+            ]
+            root_preferred = self.root_layout.GetPreferredSize(Size(0, 0))
+            lines.append(
+                u"root_preferred={0}x{1}".format(
+                    root_preferred.Width,
+                    root_preferred.Height
+                )
+            )
+            for row_index, row_style in enumerate(self.root_layout.RowStyles):
+                lines.append(
+                    u"root_row_{0}=type:{1},height:{2}".format(
+                        row_index,
+                        row_style.SizeType,
+                        row_style.Height
+                    )
+                )
+            for name, control in [
+                (u"root", self.root_layout),
+                (u"summary_cards", self.summary_cards),
+                (u"issue_stats", self.issue_stats),
+                (u"top_issues_group", self.top_issues_group),
+                (u"top_issues_header", self.top_issues_header),
+                (u"top_issues_table", self.top_issues_table),
+                (u"footer", self.dashboard_footer)
+            ]:
+                lines.append(self._diagnostic_control_line(name, control))
+            for index, label in enumerate(self.top_issues_header_labels):
+                lines.append(
+                    self._diagnostic_control_line(
+                        u"table_header_{0}".format(index),
+                        label
+                    )
+                )
+            label_index = 0
+            for control in self._walk_controls(self.root_layout):
+                if isinstance(control, Label):
+                    lines.append(
+                        self._diagnostic_control_line(
+                            u"label_{0}:{1}".format(
+                                label_index,
+                                control.Text
+                            ),
+                            control
+                        )
+                    )
+                    label_index += 1
+            root_screen_left = self.root_layout.PointToScreen(Point(0, 0)).X
+            rightmost = 0
+            for control in self._walk_controls(self.root_layout):
+                control_right = control.PointToScreen(
+                    Point(control.Width, 0)
+                ).X - root_screen_left
+                rightmost = max(rightmost, control_right)
+            lines.append(u"rightmost_child={0}".format(rightmost))
+            with io.open(
+                self.diagnostic_log_path,
+                "a",
+                encoding="utf-8"
+            ) as log_file:
+                log_file.write(u"\n".join(lines) + u"\n")
+        except Exception:
+            pass
+
+    def _diagnostic_control_line(self, name, control):
+        bounds = control.Bounds
+        preferred = control.PreferredSize
+        return (
+            u"{0}=bounds:{1},{2},{3},{4};preferred:{5}x{6};"
+            u"autosize:{7};dock:{8};anchor:{9}"
+        ).format(
+            name,
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            preferred.Width,
+            preferred.Height,
+            control.AutoSize,
+            control.Dock,
+            control.Anchor
+        )
+
+    def _walk_controls(self, parent):
+        for control in parent.Controls:
+            yield control
+            for child in self._walk_controls(control):
+                yield child
+
+    def _card(self, title, count, note, emphasize_count=True):
         card = TableLayoutPanel()
         card.Dock = DockStyle.Fill
+        card.MinimumSize = Size(0, 110)
+        card.MaximumSize = Size(0, 110)
         card.Margin = Padding(5, 6, 5, 8)
-        card.Padding = Padding(14, 12, 14, 12)
+        card.Padding = Padding(12, 10, 12, 10)
         card.BackColor = LIGHT
         card.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
         card.ColumnCount = 1
         card.RowCount = 3
         card.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
-        card.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        card.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
+        card.RowStyles.Add(RowStyle(SizeType.Absolute, 34.0))
+        card.RowStyles.Add(RowStyle(SizeType.Absolute, 26.0))
         title_label = Label()
         title_label.Text = title
         title_label.Dock = DockStyle.Fill
-        title_label.Font = get_font(9.0, FontStyle.Bold)
+        title_label.AutoSize = False
+        title_label.AutoEllipsis = False
+        title_label.UseCompatibleTextRendering = False
+        title_label.Font = self.card_title_font
+        title_label.TextAlign = ContentAlignment.MiddleLeft
         card.Controls.Add(title_label, 0, 0)
         count_label = Label()
         count_label.Text = u"{0}".format(count)
         count_label.Dock = DockStyle.Fill
-        count_label.Font = get_font(21.0, FontStyle.Bold)
-        count_label.ForeColor = ORANGE
+        count_label.AutoSize = False
+        count_label.AutoEllipsis = False
+        count_label.UseCompatibleTextRendering = False
+        count_label.Font = (
+            self.card_count_font if emphasize_count else self.neutral_count_font
+        )
+        count_label.ForeColor = ORANGE if emphasize_count else MUTED
         count_label.TextAlign = ContentAlignment.MiddleLeft
         card.Controls.Add(count_label, 0, 1)
         note_label = Label()
         note_label.Text = note
         note_label.Dock = DockStyle.Fill
-        note_label.AutoEllipsis = True
+        note_label.AutoSize = False
+        note_label.AutoEllipsis = False
+        note_label.UseCompatibleTextRendering = False
         note_label.ForeColor = MUTED
+        note_label.Font = self.small_font
+        note_label.TextAlign = ContentAlignment.MiddleLeft
         card.Controls.Add(note_label, 0, 2)
         return card
+
+    def _stat_cell(self, title, value):
+        cell = TableLayoutPanel()
+        cell.Dock = DockStyle.Fill
+        cell.AutoSize = True
+        cell.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        cell.Padding = Padding(0, 20, 0, 20)
+        cell.ColumnCount = 2
+        cell.RowCount = 1
+        cell.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 62.0))
+        cell.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 38.0))
+        cell.Margin = Padding(0)
+        title_label = Label()
+        title_label.Text = title
+        title_label.Dock = DockStyle.Fill
+        title_label.AutoSize = False
+        title_label.AutoEllipsis = False
+        title_label.UseCompatibleTextRendering = False
+        title_label.Font = self.card_title_font
+        title_label.TextAlign = ContentAlignment.MiddleLeft
+        title_label.ForeColor = NAVY
+        title_label.Padding = Padding(16, 0, 4, 0)
+        cell.Controls.Add(title_label, 0, 0)
+        value_label = Label()
+        value_label.Text = u"{0}".format(value)
+        value_label.Dock = DockStyle.Fill
+        value_label.AutoSize = False
+        value_label.AutoEllipsis = False
+        value_label.UseCompatibleTextRendering = False
+        value_label.Font = self.stat_font
+        value_label.ForeColor = ORANGE
+        value_label.TextAlign = ContentAlignment.MiddleRight
+        value_label.Padding = Padding(4, 0, 16, 0)
+        cell.Controls.Add(value_label, 1, 0)
+        minimum_height = max(
+            title_label.PreferredSize.Height,
+            value_label.PreferredSize.Height
+        ) + cell.Padding.Vertical
+        cell.MinimumSize = Size(0, minimum_height)
+        return cell
+
+    def _show_details(self, sender, event_args):
+        if not callable(self.details_callback):
+            return
+        try:
+            self.details_callback()
+        except Exception as ex:
+            MessageBox.Show(
+                self,
+                u"상세 QC 결과를 열 수 없습니다.\r\n{0}".format(ex),
+                "QC Lite Details",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            )
 
     def _open_report(self, sender, event_args):
         opened, error = open_file(self.report_path)
@@ -762,7 +1189,7 @@ class QcLiteDashboardForm(QcFormBase):
         MessageBox.Show(
             self,
             u"전체 검토는 Revit QC 탭의 DOC QC 버튼을 실행하세요.",
-            "Open Full DOC QC", MessageBoxButtons.OK, MessageBoxIcon.Information
+            "DOC QC", MessageBoxButtons.OK, MessageBoxIcon.Information
         )
 
 
@@ -787,10 +1214,24 @@ def request_doc_qc_options(reports_dir, active_config_display):
     return result
 
 
-def show_qc_lite_dashboard(project_name, summary_data, key_issue_rows, report_path):
+def show_qc_lite_dashboard(
+    project_name,
+    summary_data,
+    key_issue_rows,
+    report_path,
+    details_callback=None,
+    diagnostic_log_path=None
+):
+    from qc_lite_dashboard import QcLiteDashboardForm as RuntimeDashboardForm
+
     close_profile = create_ui_close_profile(u"QC Lite")
-    form = QcLiteDashboardForm(
-        project_name, summary_data, key_issue_rows, report_path
+    form = RuntimeDashboardForm(
+        project_name,
+        summary_data,
+        key_issue_rows,
+        report_path,
+        details_callback,
+        diagnostic_log_path
     )
     close_profile.attach(form)
     try:
