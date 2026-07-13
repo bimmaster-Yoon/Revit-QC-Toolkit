@@ -1,5 +1,22 @@
 # RELEASE NOTES
 
+## v2.10.1 — Help Link & DOC QC UI Hotfix
+
+v2.10.0 배포 후 확인된 Help 시작 오류와 DOC QC Report Style 테두리 표시를 수정한 패치 릴리스입니다.
+
+### 수정 사항
+
+- Help 시작 시 `Process`를 top-level에서 import하지 않도록 변경했습니다.
+- GitHub Repository/Releases 링크를 클릭할 때만 `System.Diagnostics` 타입을 lazy import합니다.
+- 외부 URL 실행이 실패해도 Help Form이 유지되고 pyRevit traceback이 표시되지 않도록 방어했습니다.
+- DOC QC의 Report Style ComboBox를 1px 연회색 Border Panel 안에 배치해 하단 테두리가 잘리지 않도록 수정했습니다.
+
+### 유지 사항
+
+- DOC QC 검사와 Report 생성 로직은 변경하지 않았습니다.
+- Scan QC Sampling, Wall Deviation, Revision Cloud와 PDF Report 로직은 변경하지 않았습니다.
+- 기존 v2.10.0 릴리스와 태그는 그대로 보존합니다.
+
 ## v2.10.0 — QC Toolkit Completion & UI Stabilization
 
 Revit QC Toolkit의 도면 QC, Scan QC, 사용자 인터페이스와 공개 문서를 현재 기능 기준으로 정리한 안정화 릴리스입니다.

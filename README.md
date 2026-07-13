@@ -1,6 +1,6 @@
 # Revit QC Toolkit
 
-**현재 버전: v2.10.0**
+**현재 버전: v2.10.1**
 
 Revit QC Toolkit은 Revit 2026과 pyRevit 환경에서 도면 정보 품질과 Point Cloud 기반 모델 정합성을 검토하는 QC Extension입니다. DOC QC와 QC Lite는 모델을 변경하지 않는 검사 흐름이며, Scan QC는 선택한 옵션에 따라 별도의 QC View, Revision Cloud와 Report Sheet를 생성합니다.
 
@@ -16,7 +16,7 @@ Revit QC Toolkit은 Revit 2026과 pyRevit 환경에서 도면 정보 품질과 P
 
 ## 설치
 
-1. [최신 Release](https://github.com/BIMboy-Yoon/Revit-QC-Toolkit/releases)에서 `Revit_QC_Toolkit_v2.10.0.zip`을 받습니다.
+1. [최신 Release](https://github.com/BIMboy-Yoon/Revit-QC-Toolkit/releases)에서 `Revit_QC_Toolkit_v2.10.1.zip`을 받습니다.
 2. ZIP을 해제해 `Revit_QC_Toolkit.extension` 폴더를 pyRevit Extension 검색 경로 아래에 배치합니다.
 3. pyRevit Reload를 실행합니다. 버튼이 나타나지 않으면 Revit을 다시 시작합니다.
 4. Revit의 `Revit QC` 탭에서 `QC Toolkit` 패널을 확인합니다.
@@ -179,7 +179,7 @@ YJH_RevitTools.extension/
 └─ reports/                       # 로컬 실행 산출물
 ```
 
-v2.10.0 배포 ZIP은 `Revit_QC_Toolkit.extension/`을 최상위로 사용하며 QC Toolkit만 포함합니다. Interior Finish, dev/probe 도구, 테스트 자산과 로컬 출력은 제외됩니다.
+v2.10.1 배포 ZIP은 `Revit_QC_Toolkit.extension/`을 최상위로 사용하며 QC Toolkit만 포함합니다. Interior Finish, dev/probe 도구, 테스트 자산과 로컬 출력은 제외됩니다.
 
 ## Roadmap
 

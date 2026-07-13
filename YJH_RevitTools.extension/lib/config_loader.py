@@ -8,7 +8,7 @@ import os
 
 
 DEFAULT_CONFIG = {
-    "version": "v2.10.0",
+    "version": "v2.10.1",
     "preset_name": "Default QC",
     "preset_description": "General Sheet, View, and Parameter QC preset.",
     "sheet_qc": {

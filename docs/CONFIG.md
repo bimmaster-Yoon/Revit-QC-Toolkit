@@ -20,7 +20,7 @@
 
 ```json
 {
-  "version": "v2.10.0",
+  "version": "v2.10.1",
   "preset_name": "Example QC",
   "preset_description": "Example project QC preset.",
   "sheet_qc": {

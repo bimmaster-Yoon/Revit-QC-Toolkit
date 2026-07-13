@@ -1,6 +1,6 @@
 # Workflow
 
-## v2.10.0 Settings and Preset Flow
+## v2.10.1 Settings and Preset Flow
 
 1. QC Settings의 Excel Report에서 Python과 Excel Library 상태 확인
 2. Set Python...으로 Python 선택 및 저장 후 Test로 Excel Report 환경 확인
