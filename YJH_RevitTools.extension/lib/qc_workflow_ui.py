@@ -445,11 +445,18 @@ class DocQcSetupForm(QcFormBase):
         style_label.Font = get_font(9.5, FontStyle.Bold)
         style_label.Margin = Padding(0)
         style_row.Controls.Add(style_label, 0, 0)
+        style_combo_border = Panel()
+        style_combo_border.Dock = DockStyle.Fill
+        style_combo_border.Margin = Padding(0)
+        style_combo_border.Padding = Padding(1)
+        style_combo_border.BackColor = DOC_INNER_BORDER_COLOR
+        style_row.Controls.Add(style_combo_border, 1, 0)
         self.style_combo = ComboBox()
         self.style_combo.Dock = DockStyle.Fill
         self.style_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.style_combo.MinimumSize = Size(0, DOC_CONTROL_HEIGHT)
-        self.style_combo.MaximumSize = Size(0, DOC_CONTROL_HEIGHT)
+        self.style_combo.FlatStyle = FlatStyle.Flat
+        self.style_combo.MinimumSize = Size(0, DOC_CONTROL_HEIGHT - 2)
+        self.style_combo.MaximumSize = Size(0, DOC_CONTROL_HEIGHT - 2)
         self.style_combo.Margin = Padding(0)
         self.style_combo.BeginUpdate()
         try:
@@ -458,7 +465,7 @@ class DocQcSetupForm(QcFormBase):
         finally:
             self.style_combo.EndUpdate()
         self.style_combo.SelectedIndex = 0
-        style_row.Controls.Add(self.style_combo, 1, 0)
+        style_combo_border.Controls.Add(self.style_combo)
         self.set_tip(
             self.style_combo,
             u"Full + Summary는 Full CSV와 Summary CSV를 함께 생성합니다."

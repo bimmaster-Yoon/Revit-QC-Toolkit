@@ -11,7 +11,7 @@ import clr
 clr.AddReference("System.Drawing")
 clr.AddReference("System.Windows.Forms")
 
-from System.Diagnostics import Process, ProcessStartInfo, Stopwatch
+from System.Diagnostics import Stopwatch
 from System.Drawing import (
     Color, ContentAlignment, FontStyle, Point, Rectangle, Size, SolidBrush
 )
@@ -82,6 +82,20 @@ GITHUB_REPOSITORY_URL = (
     u"https://github.com/BIMboy-Yoon/Revit-QC-Toolkit"
 )
 GITHUB_RELEASES_URL = GITHUB_REPOSITORY_URL + u"/releases"
+
+
+def open_external_url(url):
+    """Open a URL without making Help startup depend on Process imports."""
+    try:
+        from System.Diagnostics import Process, ProcessStartInfo
+
+        start_info = ProcessStartInfo()
+        start_info.FileName = url
+        start_info.UseShellExecute = True
+        Process.Start(start_info)
+        return True
+    except Exception:
+        return False
 
 
 HELP_SECTIONS = [
@@ -1205,11 +1219,7 @@ class HelpForm(Form):
         url = safe_text(getattr(sender, "Tag", u"")).strip()
         if not url:
             return
-        try:
-            start_info = ProcessStartInfo(url)
-            start_info.UseShellExecute = True
-            Process.Start(start_info)
-        except Exception:
+        if not open_external_url(url):
             MessageBox.Show(
                 self,
                 u"웹 브라우저에서 링크를 열지 못했습니다.\n{0}".format(url),
