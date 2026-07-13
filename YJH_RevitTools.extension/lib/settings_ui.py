@@ -57,7 +57,7 @@ from config_loader import (
 from exporters import get_xlsx_environment_status, probe_external_python_path
 from report_history import open_file
 from report_ui import html_escape
-from ui_close_profiler import create_ui_close_profile
+from ui_close_profiler import create_ui_close_profile, log_section_snapshots
 from qc_ui_style import (
     BUTTON_GAP,
     BUTTON_HEIGHT,
@@ -66,6 +66,8 @@ from qc_ui_style import (
     ROW_GAP,
     SETTINGS_FOOTER_BUTTON_HEIGHT,
     SETTINGS_FOOTER_BUTTON_WIDTH,
+    SECTION_GAP,
+    apply_scan_reference_section_style,
     apply_primary_button_style,
     apply_secondary_button_style,
     configure_content_scroll,
@@ -84,7 +86,6 @@ READY_COLOR = Color.FromArgb(22, 136, 58)
 WARNING_COLOR = Color.FromArgb(200, 95, 26)
 SETTINGS_FOOTER_HEIGHT = 64
 SETTINGS_FOOTER_BUTTON_GAP = 12
-SETTINGS_SECTION_GAP = 16
 SETTINGS_INNER_PADDING = 14
 
 def is_codex_runtime_path(python_path):
@@ -257,6 +258,9 @@ class QCSettingsForm(Form):
         layout.Dock = DockStyle.Fill
         layout.AutoSize = True
         layout.Margin = Padding(0)
+        layout.Padding = Padding(
+            SETTINGS_INNER_PADDING, 8, SETTINGS_INNER_PADDING, 8
+        )
         layout.ColumnCount = 1
         layout.RowCount = 4
         layout.RowStyles.Add(RowStyle(SizeType.Absolute, 52.0))
@@ -368,6 +372,9 @@ class QCSettingsForm(Form):
         layout.Dock = DockStyle.Fill
         layout.AutoSize = True
         layout.Margin = Padding(0)
+        layout.Padding = Padding(
+            SETTINGS_INNER_PADDING, 8, SETTINGS_INNER_PADDING, 8
+        )
         layout.ColumnCount = 1
         layout.RowCount = 6
         layout.RowStyles.Add(RowStyle(SizeType.Absolute, 54.0))
@@ -478,6 +485,9 @@ class QCSettingsForm(Form):
         layout.Dock = DockStyle.Fill
         layout.AutoSize = True
         layout.Margin = Padding(0)
+        layout.Padding = Padding(
+            SETTINGS_INNER_PADDING, 8, SETTINGS_INNER_PADDING, 8
+        )
         layout.ColumnCount = 4
         layout.RowCount = 1
         for column_index in range(4):
@@ -576,26 +586,12 @@ class QCSettingsForm(Form):
 
     def _create_group(self, title):
         group = GroupBox()
-        group.Text = u"    {0}".format(title)
-        group.Dock = DockStyle.Fill
-        group.AutoSize = True
-        group.AutoSizeMode = AutoSizeMode.GrowAndShrink
-        group.FlatStyle = FlatStyle.Flat
-        group.ForeColor = SETTINGS_NAVY_COLOR
-        group.Font = self.section_font
-        group.Padding = Padding(
-            SETTINGS_INNER_PADDING,
-            SETTINGS_INNER_PADDING,
-            SETTINGS_INNER_PADDING,
-            SETTINGS_INNER_PADDING
+        apply_scan_reference_section_style(
+            group,
+            title,
+            self.section_font,
+            SECTION_GAP
         )
-        group.Margin = Padding(0, 0, 0, SETTINGS_SECTION_GAP)
-        accent = Panel()
-        accent.BackColor = SETTINGS_ORANGE_COLOR
-        accent.Size = Size(4, 16)
-        accent.Location = Point(12, 1)
-        accent.Enabled = False
-        group.Controls.Add(accent)
         return group
 
     def _configure_scroll_fallback(self, sender, event_args):
@@ -631,6 +627,7 @@ class QCSettingsForm(Form):
                 self.main_layout,
                 0.94
             )
+        log_section_snapshots(u"QC Settings", self)
 
     def _create_label(self, text, bold=False):
         label = Label()

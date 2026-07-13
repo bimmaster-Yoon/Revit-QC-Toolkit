@@ -2,8 +2,10 @@
 
 """Shared 96-DPI WinForms design tokens for Revit QC Toolkit dialogs."""
 
-from System.Drawing import Color, Font, FontFamily, FontStyle, Size
-from System.Windows.Forms import FlatStyle, Screen
+from System.Drawing import Color, Font, FontFamily, FontStyle, Point, Size
+from System.Windows.Forms import (
+    AutoSizeMode, DockStyle, FlatStyle, Label, Padding, Panel, Screen
+)
 
 
 NAVY_COLOR = Color.FromArgb(38, 54, 69)
@@ -39,6 +41,8 @@ FOOTER_BOTTOM_MARGIN = 24
 FOOTER_TOP_MARGIN = 18
 SETTINGS_FOOTER_BUTTON_WIDTH = 144
 SETTINGS_FOOTER_BUTTON_HEIGHT = 42
+SECTION_TITLE_VISIBLE_GAP = 6
+SECTION_TITLE_PREFIX = u"   "
 
 # Backward-compatible names used by existing dialogs.
 WINDOW_PADDING = OUTER_MARGIN
@@ -57,6 +61,75 @@ def get_preferred_font(size, style=FontStyle.Regular):
     except Exception:
         pass
     return Font(u"Segoe UI", size, style)
+
+
+def align_section_title_accent(
+    title_label,
+    accent_bar,
+    visible_gap=SECTION_TITLE_VISIBLE_GAP
+):
+    """Align one section accent against its title in logical pixels."""
+    title_label.Padding = Padding(0)
+    title_label.Margin = Padding(0)
+    title_label.Left = accent_bar.Right + int(visible_gap)
+    accent_y = title_label.Top + int(
+        round((title_label.Height - accent_bar.Height) / 2.0)
+    )
+    accent_bar.Top = max(1, accent_y)
+
+
+def apply_scan_reference_section_style(
+    group,
+    title,
+    title_font=None,
+    margin_bottom=SECTION_GAP
+):
+    """Apply the established Scan QC GroupBox legend treatment.
+
+    This intentionally keeps the native GroupBox border and caption masking.
+    The hidden label is only a font-metric reference used to center the accent
+    bar against the caption text; it does not introduce a header panel or a
+    second border.
+    """
+    group.Text = u"{0}{1}".format(SECTION_TITLE_PREFIX, title)
+    group.Dock = DockStyle.Fill
+    group.AutoSize = True
+    group.AutoSizeMode = AutoSizeMode.GrowAndShrink
+    group.FlatStyle = FlatStyle.Flat
+    group.ForeColor = NAVY_COLOR
+    if title_font is not None:
+        group.Font = title_font
+    group.Padding = Padding(3)
+    group.Margin = Padding(0, 0, 0, int(margin_bottom))
+
+    title_metric = Label()
+    title_metric.Text = title
+    title_metric.AutoSize = False
+    title_metric.Font = group.Font
+    title_metric.Location = Point(0, 0)
+    preferred_title_size = title_metric.GetPreferredSize(Size(0, 0))
+    title_metric.Size = Size(
+        max(1, preferred_title_size.Width),
+        group.Font.Height
+    )
+    title_metric.Visible = False
+    title_metric.TabStop = False
+    group.Controls.Add(title_metric)
+
+    accent = Panel()
+    accent.BackColor = ORANGE_HOVER_COLOR
+    accent.Size = Size(4, 16)
+    accent.Location = Point(12, 1)
+    accent.Enabled = False
+    accent.Margin = Padding(0)
+    group.Controls.Add(accent)
+    align_section_title_accent(title_metric, accent)
+    accent.BringToFront()
+    group.Tag = {
+        "section_title_metric": title_metric,
+        "section_accent_bar": accent
+    }
+    return group.Tag
 
 
 def apply_secondary_button_style(button):

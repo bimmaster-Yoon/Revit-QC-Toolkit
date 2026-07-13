@@ -11,16 +11,16 @@ import clr
 clr.AddReference("System.Drawing")
 clr.AddReference("System.Windows.Forms")
 
-from System.Diagnostics import Stopwatch
+from System.Diagnostics import Process, ProcessStartInfo, Stopwatch
 from System.Drawing import (
     Color, ContentAlignment, FontStyle, Point, Rectangle, Size, SolidBrush
 )
 from System.Windows.Forms import (
     AutoScaleMode, AutoSizeMode, BorderStyle, Button, ColumnStyle, DockStyle,
     Control, FlatStyle, FlowDirection, FlowLayoutPanel, Form,
-    FormBorderStyle, FormStartPosition, Keys, Label, MouseButtons, Padding,
-    Panel, RowStyle, SizeType, TableLayoutPanel, TextFormatFlags,
-    TextRenderer
+    FormBorderStyle, FormStartPosition, Keys, Label, LinkLabel, MouseButtons,
+    Padding, Panel, RowStyle, SizeType, TableLayoutPanel, TextFormatFlags,
+    TextRenderer, MessageBox, MessageBoxButtons, MessageBoxIcon
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,6 +78,10 @@ HELP_PROFILE_LOG_PATH = os.path.join(
     "logs",
     "help_navigation_profile.log"
 )
+GITHUB_REPOSITORY_URL = (
+    u"https://github.com/BIMboy-Yoon/Revit-QC-Toolkit"
+)
+GITHUB_RELEASES_URL = GITHUB_REPOSITORY_URL + u"/releases"
 
 
 HELP_SECTIONS = [
@@ -122,6 +126,19 @@ HELP_SECTIONS = [
                     u"Revit: 2026",
                     u"pyRevit: Supported Extension",
                     u"Mode: DOC QC Read-only / Scan QC creates QC result elements"
+                ]
+            ),
+            (
+                u"Resources",
+                [
+                    {
+                        "text": u"GitHub Repository · 소스 코드, 설치 파일, 변경 이력",
+                        "url": GITHUB_REPOSITORY_URL
+                    },
+                    {
+                        "text": u"GitHub Releases · 최신 설치 ZIP과 Release Notes",
+                        "url": GITHUB_RELEASES_URL
+                    }
                 ]
             )
         ]
@@ -666,6 +683,7 @@ class HelpForm(Form):
         self.nav_items = []
         self._nav_hover_bindings = []
         self._navigation_hovered = set()
+        self._resource_links = []
         self.page_cache = {}
         self.page_metadata = {}
         self.current_page = None
@@ -1135,9 +1153,10 @@ class HelpForm(Form):
 
         paragraphs = []
         for line in body_lines:
-            body = Label()
+            is_resource_link = isinstance(line, dict) and bool(line.get("url"))
+            body = LinkLabel() if is_resource_link else Label()
             text_watch = Stopwatch.StartNew() if self._perf_enabled else None
-            body.Text = line
+            body.Text = line.get("text", line.get("url")) if is_resource_link else line
             if text_watch is not None:
                 text_watch.Stop()
                 if metrics is not None:
@@ -1149,6 +1168,13 @@ class HelpForm(Form):
             body.Font = self.card_body_font
             body.ForeColor = BODY_TEXT_COLOR
             body.UseCompatibleTextRendering = False
+            if is_resource_link:
+                body.Tag = line.get("url")
+                body.LinkColor = ORANGE_COLOR
+                body.ActiveLinkColor = ORANGE_HOVER_COLOR
+                body.VisitedLinkColor = ORANGE_COLOR
+                body.LinkClicked += self._resource_link_clicked
+                self._resource_links.append(body)
             content.Controls.Add(body)
             paragraphs.append(body)
 
@@ -1174,6 +1200,23 @@ class HelpForm(Form):
                     2
                 )
         return outer
+
+    def _resource_link_clicked(self, sender, event_args):
+        url = safe_text(getattr(sender, "Tag", u"")).strip()
+        if not url:
+            return
+        try:
+            start_info = ProcessStartInfo(url)
+            start_info.UseShellExecute = True
+            Process.Start(start_info)
+        except Exception:
+            MessageBox.Show(
+                self,
+                u"웹 브라우저에서 링크를 열지 못했습니다.\n{0}".format(url),
+                u"GitHub Link",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            )
 
     def _layout_card(self, card_info, width, force=False):
         if not force and card_info.get("width") == width:
@@ -1340,6 +1383,12 @@ class HelpForm(Form):
             detach_border_hover(binding)
         self._nav_hover_bindings = []
         self._navigation_hovered = set()
+        for resource_link in self._resource_links:
+            try:
+                resource_link.LinkClicked -= self._resource_link_clicked
+            except Exception:
+                pass
+        self._resource_links = []
         for page in self.page_cache.values():
             try:
                 page.Dispose()

@@ -13,6 +13,7 @@ from System.Drawing import (
     Color,
     ContentAlignment,
     FontStyle,
+    Point,
     Rectangle,
     Size,
     SizeF
@@ -73,7 +74,9 @@ from scan_qc.source_views import (
     get_source_plan_view_name
 )
 from scan_qc.startup_cache import get_runtime_diagnostics
-from ui_close_profiler import create_ui_close_profile, log_layout_snapshot
+from ui_close_profiler import (
+    create_ui_close_profile, log_layout_snapshot, log_section_snapshots
+)
 from qc_ui_style import (
     BORDER_COLOR,
     BUTTON_HOVER_COLOR,
@@ -82,17 +85,19 @@ from qc_ui_style import (
     NAVY_COLOR,
     OUTER_MARGIN,
     HEADER_TOP_PADDING,
-    HEADER_BOTTOM_MARGIN,
     SECTION_GAP,
-    GROUP_INNER_PADDING,
     SMALL_ACTION_BUTTON_WIDTH,
     SMALL_ACTION_BUTTON_HEIGHT,
     FOOTER_BUTTON_WIDTH,
     FOOTER_BUTTON_HEIGHT,
     FOOTER_HEIGHT,
     WARNING_BACKGROUND_COLOR,
+    apply_scan_reference_section_style,
+    attach_border_hover,
+    apply_secondary_button_style,
     configure_content_scroll,
     configure_tooltip,
+    detach_border_hover,
     dispose_tooltip,
     get_preferred_font
 )
@@ -110,12 +115,11 @@ WINDOW_OUTER_PADDING = Padding(
     OUTER_MARGIN
 )
 GROUP_CONTENT_PADDING = Padding(
-    GROUP_INNER_PADDING,
+    14,
     8,
-    GROUP_INNER_PADDING,
+    14,
     8
 )
-GROUP_VERTICAL_MARGIN = Padding(0, 0, 0, SECTION_GAP)
 CONTROL_HEIGHT = 32
 FOOTER_BUTTON_GAP = 12
 SCAN_FOOTER_HEIGHT = FOOTER_HEIGHT
@@ -237,6 +241,7 @@ class ScanQcForm(Form):
         self.pdf_auto_enabled_plan_view = False
         self._window_bounds_applied = False
         self._window_bounds_saved = False
+        self._secondary_hover_bindings = []
         tolerance_mm = get_tolerance_mm(settings)
         deviation_options = get_deviation_options(settings)
         self.default_tolerance_mm = tolerance_mm
@@ -301,29 +306,44 @@ class ScanQcForm(Form):
         content_panel = Panel()
         content_panel.Dock = DockStyle.Fill
         content_panel.AutoScroll = False
-        content_panel.Margin = Padding(0, HEADER_BOTTOM_MARGIN, 0, 0)
+        content_panel.Margin = Padding(0, 20, 0, 0)
         content_panel.Controls.Add(main_layout)
         root_layout.Controls.Add(content_panel, 0, 1)
         self.content_panel = content_panel
         self.main_layout = main_layout
         self.Shown += self._configure_scroll_fallback
 
-        header_panel = Panel()
+        header_panel = TableLayoutPanel()
         header_panel.Dock = DockStyle.Fill
         header_panel.AutoSize = True
         header_panel.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        header_panel.ColumnCount = 1
+        header_panel.RowCount = 2
+        header_panel.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        header_panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        header_panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
         root_layout.Controls.Add(header_panel, 0, 0)
 
         intro_label = Label()
         intro_label.Text = "Scan QC Setup"
-        intro_label.Dock = DockStyle.Top
-        intro_label.AutoSize = False
+        intro_label.Dock = DockStyle.Fill
         intro_label.ForeColor = NAVY_COLOR
-        intro_label.Font = get_preferred_font(16.0, FontStyle.Bold)
-        intro_label.Padding = Padding(0, 5, 0, 0)
+        intro_label.Font = get_preferred_font(17.0, FontStyle.Bold)
+        intro_label.Padding = Padding(0)
         intro_label.AutoSize = True
-        intro_label.MinimumSize = Size(0, 46)
-        header_panel.Controls.Add(intro_label)
+        intro_label.Margin = Padding(0)
+        header_panel.Controls.Add(intro_label, 0, 0)
+
+        subtitle_label = Label()
+        subtitle_label.Text = (
+            u"Point Cloud와 Revit 벽체 오차를 검토하고 QC View와 보고서를 생성합니다."
+        )
+        subtitle_label.Dock = DockStyle.Fill
+        subtitle_label.AutoSize = True
+        subtitle_label.ForeColor = SECONDARY_TEXT_COLOR
+        subtitle_label.Font = get_preferred_font(9.5)
+        subtitle_label.Margin = Padding(0, 6, 0, 0)
+        header_panel.Controls.Add(subtitle_label, 0, 1)
 
         analysis_scope_group = self._create_group("Analysis Scope")
         main_layout.Controls.Add(analysis_scope_group, 0, 0)
@@ -1213,19 +1233,21 @@ class ScanQcForm(Form):
 
     def _create_group(self, text):
         group = GroupBox()
-        group.Text = text
-        group.Dock = DockStyle.Fill
-        group.AutoSize = True
-        group.AutoSizeMode = AutoSizeMode.GrowAndShrink
-        group.ForeColor = NAVY_COLOR
-        group.Font = get_preferred_font(10.5, FontStyle.Bold)
-        group.Margin = GROUP_VERTICAL_MARGIN
+        apply_scan_reference_section_style(
+            group,
+            text,
+            get_preferred_font(10.5, FontStyle.Bold),
+            SECTION_GAP
+        )
         return group
 
     def cleanup(self):
         if getattr(self, "_cleanup_done", False):
             return
         self._cleanup_done = True
+        for binding in self._secondary_hover_bindings:
+            detach_border_hover(binding)
+        self._secondary_hover_bindings = []
         dispose_tooltip(getattr(self, "tool_tip", None))
         self.tool_tip = None
 
@@ -1242,6 +1264,7 @@ class ScanQcForm(Form):
             self.content_panel,
             self.main_layout
         )
+        log_section_snapshots(u"Scan QC", self)
 
     def _set_tooltip(self, control, text):
         try:
@@ -1402,12 +1425,11 @@ class ScanQcForm(Form):
         return check_box
 
     def _apply_secondary_button_style(self, button):
-        button.FlatStyle = FlatStyle.Flat
-        button.FlatAppearance.BorderSize = 1
+        apply_secondary_button_style(button)
         button.FlatAppearance.BorderColor = BORDER_COLOR
-        button.BackColor = Color.White
-        button.ForeColor = NAVY_COLOR
-        button.UseVisualStyleBackColor = False
+        button.FlatAppearance.MouseOverBackColor = Color.White
+        button.FlatAppearance.MouseDownBackColor = Color.White
+        self._secondary_hover_bindings.append(attach_border_hover(button))
 
     def _apply_primary_button_style(self, button):
         button.FlatStyle = FlatStyle.Flat

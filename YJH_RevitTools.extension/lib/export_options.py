@@ -10,24 +10,26 @@ clr.AddReference("System.Windows.Forms")
 
 from System import Guid
 from System.Drawing import (
-    Color, ContentAlignment, Font, FontFamily, FontStyle, Size
+    Color, ContentAlignment, Font, FontFamily, FontStyle, Point, Size
 )
 from System.Windows.Forms import (
     AnchorStyles, AutoScaleMode, AutoSizeMode, Button, CheckBox, ColumnStyle,
     ComboBoxStyle, DialogResult, DockStyle, FlatStyle, FlowDirection,
     FlowLayoutPanel, FolderBrowserDialog, Form, FormBorderStyle,
     FormStartPosition, Label, MessageBox, MessageBoxButtons, MessageBoxIcon,
-    Padding, Panel, RowStyle, SizeType, TableLayoutPanel, TextBox, ToolTip
+    GroupBox, Padding, Panel, RowStyle, SizeType, TableLayoutPanel, TextBox,
+    ToolTip
 )
 
 from qc_ui_style import (
+    apply_scan_reference_section_style,
     attach_border_hover,
     configure_content_scroll,
     configure_tooltip,
     detach_border_hover,
     dispose_tooltip
 )
-from ui_close_profiler import create_ui_close_profile
+from ui_close_profiler import create_ui_close_profile, log_section_snapshots
 
 
 LATEST_EXPORT_FOLDER_FILE = "latest_export_folder.txt"
@@ -39,11 +41,12 @@ MUTED_COLOR = Color.FromArgb(100, 116, 135)
 ORANGE_COLOR = Color.FromArgb(242, 140, 40)
 ORANGE_LIGHT_COLOR = Color.FromArgb(255, 244, 234)
 BORDER_COLOR = Color.FromArgb(216, 222, 229)
+INNER_BORDER_COLOR = Color.FromArgb(228, 233, 238)
 LIGHT_BACKGROUND_COLOR = Color.FromArgb(246, 248, 250)
 WARNING_COLOR = Color.FromArgb(200, 95, 26)
 
 WINDOW_OUTER_MARGIN = 28
-SECTION_GAP = 18
+SECTION_GAP = 14
 SECTION_INNER_PADDING = 16
 ROW_GAP = 10
 CONTROL_HEIGHT = 36
@@ -140,7 +143,7 @@ class ExportOptionsForm(Form):
 
         self.title_font = get_preferred_font(17.0, FontStyle.Bold)
         self.subtitle_font = get_preferred_font(9.5, FontStyle.Regular)
-        self.section_font = get_preferred_font(10.0, FontStyle.Bold)
+        self.section_font = get_preferred_font(10.5, FontStyle.Bold)
         self.body_font = get_preferred_font(9.5, FontStyle.Regular)
         self.card_title_font = get_preferred_font(9.5, FontStyle.Bold)
         self.helper_font = get_preferred_font(8.5, FontStyle.Regular)
@@ -253,16 +256,12 @@ class ExportOptionsForm(Form):
         section.Dock = DockStyle.Top
         section.AutoSize = True
         section.AutoSizeMode = AutoSizeMode.GrowAndShrink
-        section.Padding = Padding(SECTION_INNER_PADDING, 12, SECTION_INNER_PADDING, 12)
+        section.Padding = Padding(14, 8, 14, 8)
         section.BackColor = Color.White
         section.ColumnCount = 1
-        section.RowCount = 3
-        section.RowStyles.Add(RowStyle(SizeType.Absolute, 26.0))
+        section.RowCount = 2
         section.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
         section.RowStyles.Add(RowStyle(SizeType.Absolute, 48.0))
-
-        title = self._create_section_title(u"EXPORT LOCATION")
-        section.Controls.Add(title, 0, 0)
 
         last_label = Label()
         if last_folder:
@@ -275,7 +274,7 @@ class ExportOptionsForm(Form):
         last_label.Font = self.helper_font
         last_label.ForeColor = MUTED_COLOR
         last_label.TextAlign = ContentAlignment.MiddleLeft
-        section.Controls.Add(last_label, 0, 1)
+        section.Controls.Add(last_label, 0, 0)
         self.tool_tip.SetToolTip(last_label, last_label.Text)
 
         path_row = TableLayoutPanel()
@@ -288,7 +287,7 @@ class ExportOptionsForm(Form):
         path_row.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 12.0))
         path_row.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 112.0))
         path_row.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        section.Controls.Add(path_row, 0, 2)
+        section.Controls.Add(path_row, 0, 1)
 
         self.folder_text = TextBox()
         self.folder_text.Text = last_folder or u""
@@ -320,26 +319,19 @@ class ExportOptionsForm(Form):
             self.browse_button,
             u"보고서를 저장할 폴더를 선택합니다."
         )
-        return section
+        return self._wrap_section_frame(section, u"EXPORT LOCATION")
 
     def _build_formats_section(self, quick_mode):
         section = TableLayoutPanel()
         section.Dock = DockStyle.Top
         section.AutoSize = True
         section.AutoSizeMode = AutoSizeMode.GrowAndShrink
-        section.Padding = Padding(SECTION_INNER_PADDING, 12, SECTION_INNER_PADDING, 12)
+        section.Padding = Padding(14, 8, 14, 8)
         section.BackColor = Color.White
         section.ColumnCount = 1
-        section.RowCount = 3
-        section.RowStyles.Add(RowStyle(SizeType.Absolute, 30.0))
+        section.RowCount = 2
         section.RowStyles.Add(RowStyle(SizeType.Absolute, 246.0))
         section.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
-
-        section.Controls.Add(
-            self._create_section_title(u"OUTPUT FORMATS"),
-            0,
-            0
-        )
 
         grid = TableLayoutPanel()
         grid.Dock = DockStyle.Fill
@@ -352,7 +344,7 @@ class ExportOptionsForm(Form):
         grid.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
         for row_index in range(3):
             grid.RowStyles.Add(RowStyle(SizeType.Percent, 33.333))
-        section.Controls.Add(grid, 0, 1)
+        section.Controls.Add(grid, 0, 0)
 
         styled_card, self.styled_xlsx_check = self._create_format_card(
             u"Styled XLSX Report",
@@ -414,7 +406,7 @@ class ExportOptionsForm(Form):
         self.export_note_label.ForeColor = MUTED_COLOR
         self.export_note_label.TextAlign = ContentAlignment.MiddleLeft
         self.export_note_label.Padding = Padding(2, 2, 0, 0)
-        section.Controls.Add(self.export_note_label, 0, 2)
+        section.Controls.Add(self.export_note_label, 0, 1)
 
         self.export_checks = [
             self.full_csv_check,
@@ -425,7 +417,7 @@ class ExportOptionsForm(Form):
         ]
         for check_box in self.export_checks:
             check_box.CheckedChanged += self._update_export_state
-        return section
+        return self._wrap_section_frame(section, u"OUTPUT FORMATS")
 
     def _create_format_card(
         self,
@@ -445,7 +437,7 @@ class ExportOptionsForm(Form):
             5 if row_index < 2 else 0
         )
         outer.Padding = Padding(1)
-        outer.BackColor = ORANGE_COLOR if recommended else BORDER_COLOR
+        outer.BackColor = ORANGE_COLOR if recommended else INNER_BORDER_COLOR
         outer.ColumnCount = 1
         outer.RowCount = 1
         outer.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
@@ -514,7 +506,7 @@ class ExportOptionsForm(Form):
         return outer, check_box
 
     def _create_empty_format_card(self, column_index, row_index):
-        outer = TableLayoutPanel()
+        outer = Panel()
         outer.Dock = DockStyle.Fill
         outer.Margin = Padding(
             0 if column_index == 0 else 5,
@@ -522,28 +514,20 @@ class ExportOptionsForm(Form):
             5 if column_index == 0 else 0,
             5 if row_index < 2 else 0
         )
-        outer.Padding = Padding(1)
-        outer.BackColor = BORDER_COLOR
-        outer.ColumnCount = 1
-        outer.RowCount = 1
-        outer.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
-        outer.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
-        inner = Panel()
-        inner.Dock = DockStyle.Fill
-        inner.Margin = Padding(0)
-        inner.BackColor = LIGHT_BACKGROUND_COLOR
-        outer.Controls.Add(inner, 0, 0)
+        outer.BackColor = Color.White
         return outer
 
-    def _create_section_title(self, text):
-        label = Label()
-        label.Text = text
-        label.Dock = DockStyle.Fill
-        label.AutoSize = False
-        label.Font = self.section_font
-        label.ForeColor = NAVY_COLOR
-        label.TextAlign = ContentAlignment.MiddleLeft
-        return label
+    def _wrap_section_frame(self, section, title):
+        frame = GroupBox()
+        section.Margin = Padding(0)
+        frame.Controls.Add(section)
+        apply_scan_reference_section_style(
+            frame,
+            title,
+            self.section_font,
+            SECTION_GAP
+        )
+        return frame
 
     def _build_footer(self):
         footer = Panel()
@@ -633,6 +617,7 @@ class ExportOptionsForm(Form):
             self.content_layout,
             0.94
         )
+        log_section_snapshots(u"QC Lite Export", self)
 
     def _update_export_state(self, sender, event_args):
         if not hasattr(self, "export_checks"):

@@ -15,7 +15,7 @@ from System.Drawing import Color, ContentAlignment, FontStyle, Point, Size
 from System.Windows.Forms import (
     AutoScaleMode, AutoSizeMode, BorderStyle, Button, CheckBox, ColumnStyle, ComboBox,
     ComboBoxStyle, DialogResult, DockStyle, FlowDirection, FlowLayoutPanel,
-    FolderBrowserDialog, Form, FormBorderStyle, FormStartPosition,
+    FlatStyle, FolderBrowserDialog, Form, FormBorderStyle, FormStartPosition,
     GroupBox, Label, MessageBox, MessageBoxButtons, MessageBoxIcon, Padding,
     Panel, RowStyle, Screen, SizeType, TableLayoutPanel,
     TableLayoutPanelCellBorderStyle, TextBox, ToolTip
@@ -26,7 +26,7 @@ from export_options import (
     write_latest_export_folder
 )
 from report_history import open_file
-from ui_close_profiler import create_ui_close_profile
+from ui_close_profiler import create_ui_close_profile, log_section_snapshots
 from qc_ui_style import (
     BUTTON_GAP,
     CONTROL_HEIGHT,
@@ -41,10 +41,12 @@ from qc_ui_style import (
     MUTED_COLOR as MUTED,
     NAVY_COLOR as NAVY,
     ORANGE_COLOR as ORANGE,
+    ORANGE_HOVER_COLOR as ORANGE_ACCENT,
     OUTER_MARGIN,
     SECTION_GAP,
     WINDOW_PADDING,
     WARNING_BACKGROUND_COLOR as ORANGE_LIGHT,
+    apply_scan_reference_section_style,
     attach_border_hover,
     apply_primary_button_style,
     apply_secondary_button_style,
@@ -60,6 +62,16 @@ RED_LIGHT = Color.FromArgb(253, 239, 238)
 TABLE_HEADER_COLOR = Color.FromArgb(241, 244, 247)
 SEPARATOR_COLOR = Color.FromArgb(224, 229, 234)
 QC_LITE_DASHBOARD_BUILD = u"qc-lite-dashboard-step03"
+DOC_LABEL_WIDTH = 170
+DOC_ACTION_WIDTH = 116
+DOC_CONTROL_HEIGHT = 36
+DOC_INNER_PADDING = 14
+DOC_CONTENT_RIGHT_INSET = 0
+DOC_FOOTER_RIGHT_INSET = 0
+DOC_HELPER_COLOR = Color.FromArgb(100, 116, 135)
+DOC_CARD_COLOR = Color.FromArgb(246, 248, 250)
+DOC_BORDER_COLOR = Color.FromArgb(216, 222, 229)
+DOC_INNER_BORDER_COLOR = Color.FromArgb(228, 233, 238)
 
 
 class QcFormBase(Form):
@@ -102,19 +114,24 @@ class QcFormBase(Form):
         return check
 
     def make_info_badge(self, text):
+        border = Panel()
+        border.Dock = DockStyle.Fill
+        border.MinimumSize = Size(0, CONTROL_HEIGHT)
+        border.Margin = Padding(8, 4, 8, 4)
+        border.Padding = Padding(1)
+        border.BackColor = DOC_INNER_BORDER_COLOR
         badge = Label()
         badge.Text = text
         badge.Dock = DockStyle.Fill
         badge.AutoSize = False
-        badge.MinimumSize = Size(0, CONTROL_HEIGHT)
         badge.TextAlign = ContentAlignment.MiddleLeft
-        badge.Margin = Padding(8, 4, 8, 4)
+        badge.Margin = Padding(0)
         badge.Padding = Padding(10, 0, 10, 0)
         badge.ForeColor = MUTED
-        badge.BackColor = LIGHT
-        badge.BorderStyle = BorderStyle.FixedSingle
+        badge.BackColor = DOC_CARD_COLOR
         badge.Font = get_font(9.0)
-        return badge
+        border.Controls.Add(badge)
+        return border
 
     def set_tip(self, control, text):
         try:
@@ -136,8 +153,8 @@ class DocQcSetupForm(QcFormBase):
         self.result = None
         self.folder_path = last_folder or u""
         self.Text = "Revit QC - DOC QC Setup"
-        self.ClientSize = Size(1220, 1040)
-        self.MinimumSize = Size(1100, 920)
+        self.ClientSize = Size(1180, 980)
+        self.MinimumSize = Size(1080, 900)
         self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = True
@@ -149,6 +166,7 @@ class DocQcSetupForm(QcFormBase):
         self.AutoScaleMode = AutoScaleMode.Dpi
         self.AutoScroll = False
         self.tool_tip = configure_tooltip(ToolTip())
+        self._doc_hover_bindings = []
 
         main = TableLayoutPanel()
         main.Dock = DockStyle.Fill
@@ -166,24 +184,37 @@ class DocQcSetupForm(QcFormBase):
         main.RowStyles.Add(RowStyle(SizeType.Absolute, float(FOOTER_HEIGHT)))
         self.Controls.Add(main)
 
-        header_panel = Panel()
+        header_panel = TableLayoutPanel()
         header_panel.Dock = DockStyle.Fill
         header_panel.AutoSize = True
         header_panel.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        header_panel.ColumnCount = 1
+        header_panel.RowCount = 2
+        header_panel.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        header_panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        header_panel.RowStyles.Add(RowStyle(SizeType.AutoSize))
         main.Controls.Add(header_panel, 0, 0)
         title = Label()
         title.Text = "DOC QC Setup"
-        title.Dock = DockStyle.Top
+        title.Dock = DockStyle.Fill
         title.AutoSize = True
-        title.MinimumSize = Size(0, 58)
-        title.Font = get_font(16.0, FontStyle.Bold)
-        title.Padding = Padding(0, 5, 0, 0)
-        header_panel.Controls.Add(title)
+        title.Font = get_font(17.0, FontStyle.Bold)
+        title.Margin = Padding(0)
+        title.ForeColor = NAVY
+        header_panel.Controls.Add(title, 0, 0)
+        subtitle = Label()
+        subtitle.Text = u"Sheet·View·Parameter 품질을 기준별로 검사하고 보고서로 정리합니다."
+        subtitle.Dock = DockStyle.Fill
+        subtitle.AutoSize = True
+        subtitle.Font = get_font(9.5)
+        subtitle.ForeColor = DOC_HELPER_COLOR
+        subtitle.Margin = Padding(0, 6, 0, 0)
+        header_panel.Controls.Add(subtitle, 0, 1)
 
         content_panel = Panel()
         content_panel.Dock = DockStyle.Fill
         content_panel.AutoScroll = False
-        content_panel.Margin = Padding(0, HEADER_BOTTOM_MARGIN, 0, 0)
+        content_panel.Margin = Padding(0, 20, 0, 0)
         main.Controls.Add(content_panel, 0, 1)
 
         content = TableLayoutPanel()
@@ -200,13 +231,21 @@ class DocQcSetupForm(QcFormBase):
         self.Shown += self._configure_scroll_fallback
 
         scope_group = self.make_group("Review Scope")
+        scope_group.Padding = Padding(3)
+        self._add_section_accent(scope_group)
         scope = TableLayoutPanel()
         scope.Dock = DockStyle.Fill
         scope.AutoSize = True
-        scope.Padding = Padding(12, 10, 12, 10)
+        scope.Margin = Padding(0)
+        scope.Padding = Padding(
+            DOC_INNER_PADDING, 8, DOC_INNER_PADDING, 8
+        )
         scope.ColumnCount = 2
-        scope.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 180.0))
+        scope.RowCount = 2
+        scope.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, float(DOC_LABEL_WIDTH)))
         scope.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        scope.RowStyles.Add(RowStyle(SizeType.Absolute, float(DOC_CONTROL_HEIGHT)))
+        scope.RowStyles.Add(RowStyle(SizeType.AutoSize))
         scope_group.Controls.Add(scope)
         content.Controls.Add(scope_group, 0, 0)
         scope_label = Label()
@@ -214,12 +253,14 @@ class DocQcSetupForm(QcFormBase):
         scope_label.Dock = DockStyle.Fill
         scope_label.TextAlign = ContentAlignment.MiddleLeft
         scope_label.Font = get_font(9.5, FontStyle.Bold)
+        scope_label.Margin = Padding(0)
         scope.Controls.Add(scope_label, 0, 0)
         self.scope_combo = ComboBox()
         self.scope_combo.Dock = DockStyle.Fill
         self.scope_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.scope_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
-        self.scope_combo.Margin = Padding(8, 12, 8, 12)
+        self.scope_combo.MinimumSize = Size(0, DOC_CONTROL_HEIGHT)
+        self.scope_combo.MaximumSize = Size(0, DOC_CONTROL_HEIGHT)
+        self.scope_combo.Margin = Padding(0)
         self.scope_combo.BeginUpdate()
         try:
             for item in [
@@ -231,6 +272,11 @@ class DocQcSetupForm(QcFormBase):
             self.scope_combo.EndUpdate()
         self.scope_combo.SelectedIndex = 0
         scope.Controls.Add(self.scope_combo, 1, 0)
+        scope_helper = self._make_helper_label(
+            u"현재 선택한 범위를 기준으로 DOC QC를 실행합니다."
+        )
+        scope_helper.Margin = Padding(0, 6, 0, 0)
+        scope.Controls.Add(scope_helper, 1, 1)
         self.set_tip(
             self.scope_combo,
             u"검토 범위를 선택합니다. 현재 검사 엔진은 Current Project 범위를 "
@@ -238,16 +284,21 @@ class DocQcSetupForm(QcFormBase):
         )
 
         category_group = self.make_group("QC Categories")
+        category_group.Padding = Padding(3)
+        self._add_section_accent(category_group)
         categories = TableLayoutPanel()
         categories.Dock = DockStyle.Fill
         categories.AutoSize = True
-        categories.Padding = Padding(12, 10, 12, 10)
+        categories.Margin = Padding(0)
+        categories.Padding = Padding(
+            DOC_INNER_PADDING, 8, DOC_INNER_PADDING, 8
+        )
         categories.ColumnCount = 2
         categories.RowCount = 3
         categories.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
         categories.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
         for _index in range(3):
-            categories.RowStyles.Add(RowStyle(SizeType.AutoSize))
+            categories.RowStyles.Add(RowStyle(SizeType.Absolute, 40.0))
         category_group.Controls.Add(categories)
         content.Controls.Add(category_group, 0, 1)
         self.sheet_check = self.make_check("Sheet QC")
@@ -275,6 +326,12 @@ class DocQcSetupForm(QcFormBase):
             (placement_badge, 0, 2), (naming_badge, 1, 2)
         ]:
             categories.Controls.Add(control, column, row)
+            control.Margin = Padding(
+                0 if column == 0 else 5,
+                2,
+                5 if column == 0 else 0,
+                2
+            )
         self.set_tip(
             self.sheet_check,
             u"Sheet Number, Sheet Name, View Placement 상태를 검토합니다."
@@ -297,67 +354,103 @@ class DocQcSetupForm(QcFormBase):
         )
 
         rule_group = self.make_group("Rule Set")
+        rule_group.Padding = Padding(3)
+        self._add_section_accent(rule_group)
         rule = TableLayoutPanel()
         rule.Dock = DockStyle.Fill
         rule.AutoSize = True
-        rule.Padding = Padding(14, 10, 14, 10)
+        rule.Margin = Padding(0)
+        rule.Padding = Padding(
+            DOC_INNER_PADDING, 8, DOC_INNER_PADDING, 8
+        )
         rule.ColumnCount = 2
-        rule.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 180.0))
+        rule.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, float(DOC_LABEL_WIDTH)))
         rule.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
         rule_group.Controls.Add(rule)
         content.Controls.Add(rule_group, 0, 2)
-        rule_name = Label()
-        rule_name.Text = "Active Rule Set"
-        rule_name.Dock = DockStyle.Fill
-        rule_name.TextAlign = ContentAlignment.MiddleLeft
-        rule_name.Font = get_font(9.5, FontStyle.Bold)
-        rule.Controls.Add(rule_name, 0, 0)
-        rule_value = Label()
-        rule_value.Text = active_config_display
-        rule_value.Dock = DockStyle.Fill
-        rule_value.AutoEllipsis = True
-        rule_value.TextAlign = ContentAlignment.MiddleLeft
-        rule_value.ForeColor = MUTED
-        rule.Controls.Add(rule_value, 1, 0)
-        self.set_tip(rule_value, u"QC Settings에서 선택한 Rule Set을 사용합니다.")
+        rule_label = Label()
+        rule_label.Text = u"Active Rule"
+        rule_label.Dock = DockStyle.Fill
+        rule_label.TextAlign = ContentAlignment.MiddleLeft
+        rule_label.Font = get_font(9.5, FontStyle.Bold)
+        rule_label.Margin = Padding(0)
+        rule.Controls.Add(rule_label, 0, 0)
+        rule_card = self._build_active_rule_card(active_config_display)
+        rule.Controls.Add(rule_card, 1, 0)
+        self.set_tip(rule_card, u"QC Settings에서 선택한 Rule Set을 사용합니다.")
 
         output_group = self.make_group("Output Options / Report Style")
+        output_group.Padding = Padding(3)
+        self._add_section_accent(output_group)
         output = TableLayoutPanel()
         output.Dock = DockStyle.Fill
         output.AutoSize = True
-        output.Padding = Padding(12, 10, 12, 10)
+        output.Margin = Padding(0)
+        output.Padding = Padding(
+            DOC_INNER_PADDING, 8, DOC_INNER_PADDING, 8
+        )
         output.ColumnCount = 2
-        output.RowCount = 4
+        output.RowCount = 5
         output.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
         output.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 50.0))
-        for _index in range(4):
-            output.RowStyles.Add(RowStyle(SizeType.AutoSize))
+        output.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
+        output.RowStyles.Add(RowStyle(SizeType.Absolute, 40.0))
+        output.RowStyles.Add(RowStyle(SizeType.Absolute, 40.0))
+        output.RowStyles.Add(RowStyle(SizeType.Absolute, 46.0))
+        output.RowStyles.Add(RowStyle(SizeType.Absolute, 46.0))
         output_group.Controls.Add(output)
         content.Controls.Add(output_group, 0, 3)
+        output_helper = self._make_helper_label(
+            u"출력 형식과 보고서 저장 방식을 선택합니다."
+        )
+        output_helper.Margin = Padding(0)
+        output.Controls.Add(output_helper, 0, 0)
+        output.SetColumnSpan(output_helper, 2)
         self.summary_check = self.make_check("pyRevit Output Summary", True, False)
         self.xlsx_check = self.make_check("XLSX Report", True, True)
         self.pdf_check = self.make_check("PDF Summary", False, False)
         self.open_check = self.make_check("Open Report After Run", False, True)
-        output.Controls.Add(self.summary_check, 0, 0)
-        output.Controls.Add(self.xlsx_check, 1, 0)
-        output.Controls.Add(self.pdf_check, 0, 1)
-        output.Controls.Add(self.open_check, 1, 1)
+        for control, column, row in [
+            (self.summary_check, 0, 1), (self.xlsx_check, 1, 1),
+            (self.pdf_check, 0, 2), (self.open_check, 1, 2)
+        ]:
+            control.Margin = Padding(
+                0 if column == 0 else 5,
+                2,
+                5 if column == 0 else 0,
+                2
+            )
+            output.Controls.Add(control, column, row)
         self.set_tip(self.summary_check, u"QC 결과를 pyRevit Output 창에 표시합니다.")
         self.set_tip(self.xlsx_check, u"기존 Styled XLSX Report를 생성합니다.")
         self.set_tip(self.pdf_check, u"DOC QC PDF Summary는 아직 비활성화되어 있습니다.")
         self.set_tip(self.open_check, u"생성된 Report를 실행 후 기본 프로그램으로 엽니다.")
+        style_row = TableLayoutPanel()
+        style_row.Dock = DockStyle.Fill
+        style_row.Margin = Padding(0, 5, 0, 5)
+        style_row.Padding = Padding(0)
+        style_row.ColumnCount = 2
+        style_row.RowCount = 1
+        style_row.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, float(DOC_LABEL_WIDTH))
+        )
+        style_row.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        style_row.RowStyles.Add(RowStyle(SizeType.Absolute, float(DOC_CONTROL_HEIGHT)))
+        output.Controls.Add(style_row, 0, 3)
+        output.SetColumnSpan(style_row, 2)
         style_label = Label()
         style_label.Text = "Report Style"
         style_label.Dock = DockStyle.Fill
         style_label.TextAlign = ContentAlignment.MiddleLeft
         style_label.Font = get_font(9.5, FontStyle.Bold)
-        style_label.Margin = Padding(8, 4, 8, 4)
-        output.Controls.Add(style_label, 0, 2)
+        style_label.Margin = Padding(0)
+        style_row.Controls.Add(style_label, 0, 0)
         self.style_combo = ComboBox()
         self.style_combo.Dock = DockStyle.Fill
         self.style_combo.DropDownStyle = ComboBoxStyle.DropDownList
-        self.style_combo.MinimumSize = Size(0, CONTROL_HEIGHT)
-        self.style_combo.Margin = Padding(8, 8, 8, 8)
+        self.style_combo.MinimumSize = Size(0, DOC_CONTROL_HEIGHT)
+        self.style_combo.MaximumSize = Size(0, DOC_CONTROL_HEIGHT)
+        self.style_combo.Margin = Padding(0)
         self.style_combo.BeginUpdate()
         try:
             self.style_combo.Items.Add("Full + Summary")
@@ -365,23 +458,35 @@ class DocQcSetupForm(QcFormBase):
         finally:
             self.style_combo.EndUpdate()
         self.style_combo.SelectedIndex = 0
-        output.Controls.Add(self.style_combo, 1, 2)
+        style_row.Controls.Add(self.style_combo, 1, 0)
         self.set_tip(
             self.style_combo,
             u"Full + Summary는 Full CSV와 Summary CSV를 함께 생성합니다."
         )
         folder = TableLayoutPanel()
         folder.Dock = DockStyle.Fill
-        folder.ColumnCount = 3
+        folder.Margin = Padding(0, 5, 0, 5)
+        folder.Padding = Padding(0)
+        folder.ColumnCount = 4
         folder.RowCount = 1
+        folder.ColumnStyles.Add(
+            ColumnStyle(SizeType.Absolute, float(DOC_LABEL_WIDTH))
+        )
         folder.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
         folder.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 12.0))
-        folder.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 116.0))
+        folder.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, float(DOC_ACTION_WIDTH)))
         folder.RowStyles.Add(RowStyle(SizeType.Absolute, 36.0))
-        folder.MinimumSize = Size(0, 36)
-        folder.MaximumSize = Size(0, 36)
-        output.Controls.Add(folder, 0, 3)
+        folder.MinimumSize = Size(0, DOC_CONTROL_HEIGHT)
+        folder.MaximumSize = Size(0, DOC_CONTROL_HEIGHT)
+        output.Controls.Add(folder, 0, 4)
         output.SetColumnSpan(folder, 2)
+        folder_label = Label()
+        folder_label.Text = u"Report Folder"
+        folder_label.Dock = DockStyle.Fill
+        folder_label.TextAlign = ContentAlignment.MiddleLeft
+        folder_label.Font = get_font(9.5, FontStyle.Bold)
+        folder_label.Margin = Padding(0)
+        folder.Controls.Add(folder_label, 0, 0)
         self.folder_text = TextBox()
         self.folder_text.Text = last_folder or u""
         self.folder_text.Dock = DockStyle.Fill
@@ -394,36 +499,37 @@ class DocQcSetupForm(QcFormBase):
         self.folder_text.BackColor = Color.White
         self.folder_text.ForeColor = MUTED
         self.folder_text.Margin = Padding(0)
-        folder.Controls.Add(self.folder_text, 0, 0)
+        folder.Controls.Add(self.folder_text, 1, 0)
         self.set_tip(self.folder_text, self.folder_text.Text)
         browse = Button()
         browse.Text = "Browse..."
         browse.Dock = getattr(DockStyle, "None")
         browse.AutoSize = False
-        browse.Size = Size(116, 36)
-        browse.MinimumSize = Size(116, 36)
-        browse.MaximumSize = Size(116, 36)
+        browse.Size = Size(DOC_ACTION_WIDTH, DOC_CONTROL_HEIGHT)
+        browse.MinimumSize = Size(DOC_ACTION_WIDTH, DOC_CONTROL_HEIGHT)
+        browse.MaximumSize = Size(DOC_ACTION_WIDTH, DOC_CONTROL_HEIGHT)
         browse.Margin = Padding(0)
         self.style_button(browse)
+        self._doc_hover_bindings.append(attach_border_hover(browse))
         browse.Click += self._browse
-        folder.Controls.Add(browse, 2, 0)
+        folder.Controls.Add(browse, 3, 0)
+        self.set_tip(browse, u"보고서를 저장할 폴더를 선택합니다.")
 
         note = Label()
         note.Text = (
-            "DOC QC는 기존 Rule Set으로 Sheet / View / Parameter 품질을 검토합니다. "
-            "Naming과 View Placement는 현재 Sheet QC와 View QC에 포함됩니다. "
-            "검사 및 Report 생성 로직은 기존 방식으로 유지됩니다."
+            u"DOC QC는 기존 Rule Set으로 Sheet·View·Parameter 품질을 검토합니다.\r\n"
+            u"Naming과 View Placement는 Sheet QC와 View QC에 포함됩니다."
         )
         note.Dock = DockStyle.Fill
         note.AutoSize = True
-        note.MinimumSize = Size(0, 70)
+        note.MinimumSize = Size(0, 64)
         note.UseCompatibleTextRendering = True
         note.ForeColor = MUTED
         note.BackColor = HELP
         note.BorderStyle = BorderStyle.FixedSingle
         note.TextAlign = ContentAlignment.MiddleLeft
         note.Padding = Padding(14, 10, 14, 10)
-        note.Margin = Padding(0, 10, 0, 20)
+        note.Margin = Padding(0, 0, DOC_CONTENT_RIGHT_INSET, 18)
         content.Controls.Add(note, 0, 4)
 
         footer_panel = Panel()
@@ -432,7 +538,9 @@ class DocQcSetupForm(QcFormBase):
         footer_panel.Height = FOOTER_HEIGHT
         footer_panel.MinimumSize = Size(0, FOOTER_HEIGHT)
         footer_panel.MaximumSize = Size(0, FOOTER_HEIGHT)
-        footer_panel.Padding = Padding(0, 10, 0, 14)
+        # Align the Run button with the outer edge of the guidance card and
+        # section frames while preserving button order and spacing.
+        footer_panel.Padding = Padding(0, 10, DOC_FOOTER_RIGHT_INSET, 14)
         main.Controls.Add(footer_panel, 0, 2)
         buttons = FlowLayoutPanel()
         buttons.Dock = DockStyle.Right
@@ -452,6 +560,7 @@ class DocQcSetupForm(QcFormBase):
         run_button.Margin = Padding(0)
         self.style_button(run_button, True)
         run_button.Click += self._confirm
+        self.set_tip(run_button, u"선택한 기준으로 DOC QC를 실행하고 보고서를 저장합니다.")
         cancel = Button()
         cancel.Text = "Cancel"
         cancel.AutoSize = False
@@ -459,13 +568,127 @@ class DocQcSetupForm(QcFormBase):
         cancel.Size = Size(FOOTER_BUTTON_WIDTH, FOOTER_BUTTON_HEIGHT)
         cancel.Margin = Padding(0, 0, BUTTON_GAP, 0)
         self.style_button(cancel)
+        self._doc_hover_bindings.append(attach_border_hover(cancel))
         cancel.DialogResult = DialogResult.Cancel
+        self.set_tip(cancel, u"설정을 변경하지 않고 창을 닫습니다.")
         buttons.Controls.Add(cancel)
         self.CancelButton = cancel
         buttons.Controls.Add(run_button)
         self.AcceptButton = run_button
-        self.ResumeLayout(True)
+        self.ResumeLayout(False)
         self.PerformLayout()
+
+    def _add_section_accent(self, group):
+        section_parts = apply_scan_reference_section_style(
+            group,
+            group.Text.strip(),
+            group.Font,
+            SECTION_GAP
+        )
+        return section_parts["section_accent_bar"]
+
+    def _make_helper_label(self, text):
+        helper = Label()
+        helper.Text = text
+        helper.Dock = DockStyle.Fill
+        helper.AutoSize = True
+        helper.UseCompatibleTextRendering = True
+        helper.Font = get_font(9.0)
+        helper.ForeColor = DOC_HELPER_COLOR
+        helper.TextAlign = ContentAlignment.MiddleLeft
+        helper.Margin = Padding(0)
+        return helper
+
+    def _build_active_rule_card(self, active_config_display):
+        display = u"{0}".format(active_config_display or u"Default QC").strip()
+        rule_name = display
+        rule_file = u""
+        split_index = display.rfind(u" (")
+        if split_index >= 0 and display.endswith(u")"):
+            rule_name = display[:split_index].strip()
+            rule_file = display[split_index + 2:-1].strip()
+
+        border = Panel()
+        border.Dock = DockStyle.Fill
+        border.AutoSize = False
+        border.MinimumSize = Size(0, 82)
+        border.MaximumSize = Size(0, 82)
+        border.Padding = Padding(1)
+        border.Margin = Padding(0)
+        border.BackColor = DOC_BORDER_COLOR
+
+        card = TableLayoutPanel()
+        card.Dock = DockStyle.Fill
+        card.Margin = Padding(0)
+        card.Padding = Padding(0)
+        card.BackColor = DOC_CARD_COLOR
+        card.ColumnCount = 2
+        card.RowCount = 1
+        card.ColumnStyles.Add(ColumnStyle(SizeType.Absolute, 4.0))
+        card.ColumnStyles.Add(ColumnStyle(SizeType.Percent, 100.0))
+        card.RowStyles.Add(RowStyle(SizeType.Percent, 100.0))
+        border.Controls.Add(card)
+
+        accent = Panel()
+        accent.Dock = DockStyle.Fill
+        accent.Margin = Padding(0)
+        accent.BackColor = ORANGE_ACCENT
+        card.Controls.Add(accent, 0, 0)
+
+        text_layout = TableLayoutPanel()
+        text_layout.Dock = DockStyle.Fill
+        text_layout.Margin = Padding(0)
+        text_layout.Padding = Padding(14, 7, 14, 7)
+        text_layout.ColumnCount = 1
+        text_layout.RowCount = 3
+        text_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 18.0))
+        text_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 28.0))
+        text_layout.RowStyles.Add(RowStyle(SizeType.Absolute, 20.0))
+        card.Controls.Add(text_layout, 1, 0)
+
+        header = Label()
+        header.Text = u"ACTIVE RULE SET"
+        header.Dock = DockStyle.Fill
+        header.Font = get_font(9.0, FontStyle.Bold)
+        header.ForeColor = ORANGE_ACCENT
+        header.TextAlign = ContentAlignment.MiddleLeft
+        header.Margin = Padding(0)
+        text_layout.Controls.Add(header, 0, 0)
+
+        value = Label()
+        value.Text = rule_name or u"Default QC"
+        value.Dock = DockStyle.Fill
+        value.Font = get_font(11.0, FontStyle.Bold)
+        value.ForeColor = NAVY
+        value.TextAlign = ContentAlignment.MiddleLeft
+        value.AutoEllipsis = True
+        value.Margin = Padding(0)
+        text_layout.Controls.Add(value, 0, 1)
+
+        file_label = Label()
+        file_label.Text = rule_file or display
+        file_label.Dock = DockStyle.Fill
+        file_label.Font = get_font(9.0)
+        file_label.ForeColor = DOC_HELPER_COLOR
+        file_label.TextAlign = ContentAlignment.MiddleLeft
+        file_label.AutoEllipsis = True
+        file_label.Margin = Padding(0)
+        text_layout.Controls.Add(file_label, 0, 2)
+        self.set_tip(value, display)
+        self.set_tip(file_label, display)
+        return border
+
+    def cleanup(self):
+        if getattr(self, "_cleanup_done", False):
+            return
+        try:
+            self.Shown -= self._configure_scroll_fallback
+        except Exception:
+            pass
+        for binding in self._doc_hover_bindings:
+            detach_border_hover(binding)
+        self._doc_hover_bindings = []
+        QcFormBase.cleanup(self)
 
     def _configure_scroll_fallback(self, sender, event_args):
         configure_content_scroll(
@@ -474,6 +697,7 @@ class DocQcSetupForm(QcFormBase):
             self.content_layout,
             0.94
         )
+        log_section_snapshots(u"DOC QC", self)
 
     def _browse(self, sender, event_args):
         dialog = FolderBrowserDialog()
@@ -492,10 +716,6 @@ class DocQcSetupForm(QcFormBase):
                 write_latest_export_folder(self.reports_dir, self.folder_path)
             except Exception:
                 pass
-        else:
-            self.result = None
-            self.DialogResult = DialogResult.Cancel
-            self.Close()
         dialog.Dispose()
 
     def _confirm(self, sender, event_args):

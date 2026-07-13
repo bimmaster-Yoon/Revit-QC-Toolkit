@@ -553,3 +553,75 @@ def log_layout_snapshot(window_name, form, content_host, content_panel):
         _append_log(u" | ".join(ordered))
     except Exception:
         pass
+
+
+def log_section_snapshots(window_name, form):
+    """Write Scan-reference section geometry to the development log only."""
+    if not _is_enabled():
+        return
+    try:
+        section_rows = []
+
+        def _visit(control):
+            try:
+                metadata = getattr(control, "Tag", None)
+                if isinstance(metadata, dict):
+                    title_metric = metadata.get("section_title_metric")
+                    accent = metadata.get("section_accent_bar")
+                    if title_metric is not None and accent is not None:
+                        visible_gap = title_metric.Left - accent.Right
+                        title_center_y = (
+                            title_metric.Top + (title_metric.Height / 2.0)
+                        )
+                        accent_center_y = accent.Top + (accent.Height / 2.0)
+                        center_difference = abs(
+                            title_center_y - accent_center_y
+                        )
+                        content_bounds = []
+                        for child in control.Controls:
+                            if child == title_metric or child == accent:
+                                continue
+                            if child.Visible:
+                                content_bounds.append(_safe_text(child.Bounds))
+                        section_rows.append(
+                            u"{0}[Section={1};TitleLabel={2};AccentBar={3};"
+                            u"TitlePadding={4};TitleMargin={5};Gap={6};"
+                            u"TitleCenterY={7};AccentCenterY={8};"
+                            u"CenterDifference={9};Content={10};"
+                            u"Padding={11};Margin={12}]".format(
+                                _safe_text(control.Text).strip(),
+                                _safe_text(control.Bounds),
+                                _safe_text(title_metric.Bounds),
+                                _safe_text(accent.Bounds),
+                                _safe_text(title_metric.Padding),
+                                _safe_text(title_metric.Margin),
+                                visible_gap,
+                                title_center_y,
+                                accent_center_y,
+                                center_difference,
+                                u", ".join(content_bounds) or u"None",
+                                _safe_text(control.Padding),
+                                _safe_text(control.Margin)
+                            )
+                        )
+                for child in control.Controls:
+                    _visit(child)
+            except Exception:
+                pass
+
+        _visit(form)
+        fields = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "window": _safe_text(window_name),
+            "event": u"Section snapshot",
+            "reference": u"lib/scan_qc/dialog.py::ScanQCDialog._create_group",
+            "source": u"qc_ui_style.apply_scan_reference_section_style",
+            "device_dpi": getattr(form, "DeviceDpi", u"N/A"),
+            "sections": u"; ".join(section_rows) or u"None"
+        }
+        ordered = []
+        for key in sorted(fields.keys()):
+            ordered.append(u"{0}={1}".format(key, _safe_text(fields[key])))
+        _append_log(u" | ".join(ordered))
+    except Exception:
+        pass

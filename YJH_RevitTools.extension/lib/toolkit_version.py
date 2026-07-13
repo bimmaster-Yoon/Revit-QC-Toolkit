@@ -3,7 +3,7 @@
 """Single runtime version source for Revit QC Toolkit UI surfaces."""
 
 
-TOOLKIT_VERSION = u"2.9.0"
+TOOLKIT_VERSION = u"2.10.0"
 
 
 def get_toolkit_version_label():

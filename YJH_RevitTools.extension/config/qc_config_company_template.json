@@ -1,5 +1,5 @@
 {
-  "version": "v2.6 - Settings Preset Manager",
+  "version": "v2.10.0",
   "preset_name": "Company Template",
   "preset_description": "Template preset for company-specific QC standards.",
   "sheet_qc": {
