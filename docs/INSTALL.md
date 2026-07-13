@@ -16,7 +16,7 @@ Revit 리본에 pyRevit 탭이 보이지 않는다면 Toolkit 연결보다 pyRev
 원하는 로컬 폴더에서 저장소를 Clone합니다.
 
 ```powershell
-git clone <repository-url> Revit_Codex_Automation
+git clone https://github.com/BIMboy-Yoon/Revit-QC-Toolkit.git Revit_Codex_Automation
 cd Revit_Codex_Automation
 ```
 
@@ -87,7 +87,7 @@ Revit에서 `QC Settings`를 열고 다음 순서로 확인합니다.
 2. 저장소 루트를 pyRevit extension 검색 경로에 등록
 3. Styled XLSX를 사용할 Python과 `openpyxl` 설치
 4. `QC Settings > Set Python...`에서 Python 선택 및 Test
-5. 사용할 Rule Set 선택 후 `Use This` 적용
+5. 사용할 Rule Set 선택 후 `Apply Rule` 적용
 6. 첫 실행 시 Export 폴더 선택
 
 `qc_config_local.json`, 마지막 Export 폴더, 마지막 보고서 경로, debug log는 로컬

@@ -1,5 +1,37 @@
 # RELEASE NOTES
 
+## v2.10.0 — QC Toolkit Completion & UI Stabilization
+
+Revit QC Toolkit의 도면 QC, Scan QC, 사용자 인터페이스와 공개 문서를 현재 기능 기준으로 정리한 안정화 릴리스입니다.
+
+### 주요 변경
+
+- Scan QC, DOC QC, QC Settings와 QC Lite Export의 Section Title, Orange Accent와 얇은 Border 위계를 통일했습니다.
+- WinForms DPI 대응, Secondary Button Hover, Form cleanup과 종료 성능을 안정화했습니다.
+- `SCAN_QC_TARGET` Yes/No Shared Parameter 자동 설치와 대상 Wall workflow를 정리했습니다.
+- `Pick & Mark`, `Pick & Clear`, `Show Targets`를 추가했습니다.
+- Top N Callouts를 Slider와 직접 숫자 입력으로 설정할 수 있으며 1~20 범위로 보정합니다.
+- Scan QC 전용 A3/A2 PDF Report와 Revision Cloud ID Summary를 지원합니다.
+- QC Lite Export, Compact Summary와 Dashboard 레이아웃을 개선했습니다.
+- Help Navigation과 콘텐츠를 최신화하고 GitHub Repository/Release 링크를 추가했습니다.
+- Ribbon 버튼명과 짧은 한글 Tooltip을 현재 기능에 맞게 통일했습니다.
+- README와 공개 설치 문서를 사용자 중심으로 재정리했습니다.
+
+### 현재 제한사항
+
+- Point Cloud Sampling은 RCP/RCS 등록 상태, 좌표계, 점 밀도와 노이즈에 영향을 받습니다.
+- Arc Wall, 짧은 Wall과 후보점이 부족한 Wall은 분석에서 Skip될 수 있습니다.
+- 대규모 Active Plan Level 분석은 프로젝트 규모와 View Visibility 조건에 따라 시간이 증가할 수 있습니다.
+- Scan QC CSV Export는 Planned 상태로 비활성입니다.
+- Scan QC Image Export는 정식 출력 기능에 연결되지 않았습니다.
+- 운영 프로젝트 적용 전 테스트 모델에서 Source Plan View, Point Cloud와 Report 결과를 확인하는 것을 권장합니다.
+
+### 다음 단계
+
+- QC Toolkit 유지보수와 실프로젝트 검증
+- Active Plan Level 대규모 분석 안정화
+- Interior Finish Toolkit 별도 개발
+
 ## v2.9.0 — QC UI Stabilization & Scan Target Workflow
 
 이번 Pre-release는 DOC QC와 Scan QC의 실무 UI 안정화, `SCAN_QC_TARGET` 대상 지정 흐름, Help 및 Ribbon 안내 체계를 정리한 버전입니다.
